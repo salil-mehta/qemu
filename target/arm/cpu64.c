@@ -787,6 +787,7 @@ static void aarch64_cpu_initfn(Object *obj)
      * enabled explicitly
      */
     cs->disabled = true;
+    cs->thread_id = 0;
 }
 
 static void aarch64_cpu_finalizefn(Object *obj)
