@@ -2366,17 +2366,12 @@ static void machvirt_init(MachineState *machine)
 
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {
+        CPUArchId *cpu_slot;
         Object *cpuobj;
         CPUState *cs;
 
-        if (n >= smp_cpus) {
-            break;
-        }
-
         cpuobj = object_new(possible_cpus->cpus[n].type);
-
         cs = CPU(cpuobj);
-        cs->cpu_index = n;
 
         aarch64 &= object_property_get_bool(cpuobj, "aarch64", NULL);
         object_property_set_int(cpuobj, "socket-id",
@@ -2388,8 +2383,61 @@ static void machvirt_init(MachineState *machine)
         object_property_set_int(cpuobj, "thread-id",
                                 virt_get_thread_id(machine, n), NULL);
 
-        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
-        object_unref(cpuobj);
+        if (n < smp_cpus) {
+            qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
+            object_unref(cpuobj);
+        } else {
+            /*
+             * Handling vCPUs that are yet to be hot-plugged requires the
+             * unrealized `ARMCPU` object for the following purposes:
+             *
+             * 1. To create the corresponding host KVM vCPU.
+             * 2. During the GICv3 realization phase, the `GICR_TYPER` value is
+             *    derived using the fetched MPIDR/mp-affinity. It's worth
+             *    considering modifying the GICv3 realization code to directly
+             *    fetch the `arch-id`/mp-affinity from the possible vCPUs.
+             * 3. Additionally, the `ARMCPU` object must be retained until
+             *    `virt_cpu_post_init`, as there may be late per-vCPU
+             *    initializations.
+             *
+             * Once these tasks are completed, the initialized `ARMCPU` object
+             * can be safely released as those are not required and will be
+             * recreated when they are {hot,cold}-plugged later.
+             */
+            cs->cpu_index = n;
+            cpu_slot = virt_find_cpu_slot(cs);
+
+            /*
+             * We will pre-create the KVM vCPUs corresponding to the currently
+             * unplugged but possible QOM vCPUs and park them until they are
+             * actually hot-plugged. The ARM architecture does not allow new
+             * CPUs to be plugged after the system has been initialized, and
+             * this constraint is also reflected in KVM.
+             */
+            if (kvm_enabled()) {
+                kvm_arm_create_host_vcpu(ARM_CPU(cs));
+                /*
+                 * Override the default architecture ID with the one fetched
+                 * from KVM. After initialization, we will destroy the CPUState
+                 * for disabled vCPUs; however, the CPU slot and its association
+                 * with the architecture ID (and consequently the vCPU ID) will
+                 * remain fixed for the entire lifetime of QEMU.
+                 */
+                cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
+            }
+
+           /*
+            * GICv3 realization will need `mp-affinity` to derive `gicr_typer`
+            */
+            object_property_set_int(cpuobj, "mp-affinity", cpu_slot->arch_id,
+                                    NULL);
+
+            /*
+             * Add the unplugged vCPU to the vCPU slot temporarily. It will be
+             * released later in the virt_post_init_cpu() function
+             */
+            cpu_slot->cpu = cs;
+        }
     }
 
     /* Now we've created the CPUs we can see if they have the hypvirt timer */
@@ -2992,6 +3040,16 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     /* insert the cold/hot-plugged vcpu in the slot */
     cpu_slot = virt_find_cpu_slot(cs);
     cpu_slot->cpu = CPU(dev);
+
+    if (kvm_enabled()) {
+        /*
+         * Override the default architecture ID with the one fetched from KVM
+         * Currently, KVM derives the architecture ID from the vCPU ID specified
+         * by QEMU. In the future, we might implement a change where the entire
+         * architecture ID can be configured directly by QEMU.
+         */
+        cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
+    }
 }
 
 static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
