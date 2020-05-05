@@ -246,4 +246,30 @@ static inline int virt_get_thread_id(const MachineState *ms, int cpu_index)
     return ms->possible_cpus->cpus[cpu_index].props.thread_id;
 }
 
+static inline CPUArchId *virt_find_cpu_slot(CPUState *cs)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    CPUArchId *cpu_slot;
+
+    assert(cs->cpu_index >= 0 && cs->cpu_index < ms->possible_cpus->len);
+
+    cpu_slot = &ms->possible_cpus->cpus[cs->cpu_index];
+
+    /*
+     * The slot ID refers to the index where a vCPU with a specific architecture
+     * ID (e.g., MPIDR or affinity) is plugged in. The slot ID is more closely
+     * related to the machine configuration, while the architecture ID is tied
+     * directly to the vCPU itself. Currently, the code assumes that the slot ID
+     * and architecture ID are the same, which can make the concept of a slot
+     * somewhat vague. However, it makes more sense to associate the
+     * hot-(un)plugging of vCPUs with a slot as a metaphor. This could represent
+     * the smallest granularity for vCPU hot-(un)plugging. That said, we cannot
+     * rule out the possibility of extending this concept to die or socket
+     * level hot-(un)plugging in the future, should the ARM specification allow
+     * for it.
+     */
+
+    return cpu_slot;
+}
+
 #endif /* QEMU_ARM_VIRT_H */
