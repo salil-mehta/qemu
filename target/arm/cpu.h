@@ -1043,6 +1043,8 @@ struct ArchCPU {
 
     /* KVM init features for this CPU */
     uint32_t kvm_init_features[7];
+    /* KVM finalized features for this CPU */
+    uint32_t kvm_finalized_features[7];
 
     /* KVM CPU state */
 
