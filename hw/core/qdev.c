@@ -40,6 +40,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/qdev-clock.h"
 #include "migration/vmstate.h"
+#include "migration/misc.h"
 #include "trace.h"
 
 static bool qdev_hot_added = false;
@@ -309,6 +310,14 @@ void qdev_assert_realized_properly(void)
 {
     object_child_foreach_recursive(object_get_root(),
                                    qdev_assert_realized_properly_cb, NULL);
+}
+
+bool qdev_disable(DeviceState *dev, Error **errp)
+{
+    g_assert(dev);
+
+    return(object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
+                                   errp));
 }
 
 bool qdev_machine_modified(void)
