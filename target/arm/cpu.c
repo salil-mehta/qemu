@@ -1159,6 +1159,8 @@ static void arm_cpu_initfn(Object *obj)
     } else if (whpx_enabled()) {
         cpu->psci_version = QEMU_PSCI_VERSION_1_3;
     }
+
+    CPU(obj)->thread_id = 0;
 }
 
 /*

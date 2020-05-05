@@ -511,7 +511,7 @@ static int kvm_rebind_vcpus(Error **errp)
     return ret;
 }
 
-static void kvm_park_vcpu(CPUState *cpu)
+void kvm_park_vcpu(CPUState *cpu)
 {
     struct KVMParkedVcpu *vcpu;
 
@@ -557,7 +557,7 @@ static void kvm_reset_parked_vcpus(KVMState *s)
  *
  * @returns: 0 when success, errno (<0) when failed.
  */
-static int kvm_create_vcpu(CPUState *cpu)
+int kvm_create_vcpu(CPUState *cpu)
 {
     unsigned long vcpu_id = kvm_arch_vcpu_id(cpu);
     KVMState *s = kvm_state;
