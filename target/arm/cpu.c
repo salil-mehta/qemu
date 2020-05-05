@@ -1500,6 +1500,8 @@ static void arm_cpu_initfn(Object *obj)
         /* TCG and HVF implement PSCI 1.1 */
         cpu->psci_version = QEMU_PSCI_VERSION_1_1;
     }
+
+    CPU(obj)->thread_id = 0;
 }
 
 /*

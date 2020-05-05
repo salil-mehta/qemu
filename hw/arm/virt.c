@@ -2152,6 +2152,49 @@ static void virt_post_cpus_gic_realized(VirtMachineState *vms,
     }
 }
 
+static void
+virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
+{
+    /*
+     * Present & administratively disabled vCPUs:
+     *
+     * These CPUs are marked offline at init via '-smp disabledcpus=N'. We
+     * intentionally do not realize them during the first boot, since it is
+     * not known if or when they will ever be enabled. The decision to enable
+     * such CPUs depends on policy (e.g. guided by SLAs or other deployment
+     * requirements).
+     *
+     * Realizing all disabled vCPUs up front would make boot time proportional
+     * to 'maxcpus', even if policy permits only a small subset to be enabled.
+     * This can lead to unacceptable boot delays in some scenarios.
+     *
+     * Instead, these CPUs remain administratively disabled and unrealized at
+     * boot, to be instantiated and brought online only if policy later allows
+     * it.
+     */
+
+    /* set this vCPU to be administratively 'disabled' in QOM */
+    qdev_disable(DEVICE(cpuobj), NULL, &error_fatal);
+
+    if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
+        object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
+                                NULL);
+    }
+
+    /*
+     * [!] Constraint: The ARM CPU architecture does not permit new CPUs
+     * to be added after system initialization.
+     *
+     * Workaround: Pre-create KVM vCPUs even for those that are not yet
+     * online i.e. powered-off, keeping them `parked` and in an
+     * `unrealized (at-least during boot time)` state within QEMU until
+     * they are powered-on and made online.
+     */
+    if (kvm_enabled()) {
+        kvm_arm_create_host_vcpu(ARM_CPU(cpuobj));
+    }
+}
+
 static void machvirt_init(MachineState *machine)
 {
     VirtMachineState *vms = VIRT_MACHINE(machine);
@@ -2319,10 +2362,6 @@ static void machvirt_init(MachineState *machine)
         Object *cpuobj;
         CPUState *cs;
 
-        if (n >= smp_cpus) {
-            break;
-        }
-
         cpuobj = object_new(possible_cpus->cpus[n].type);
         object_property_set_int(cpuobj, "mp-affinity",
                                 possible_cpus->cpus[n].arch_id, NULL);
@@ -2427,8 +2466,34 @@ static void machvirt_init(MachineState *machine)
             }
         }
 
-        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
-        object_unref(cpuobj);
+        /* start secondary vCPUs in a powered-down state */
+        if(n && mc->has_online_capable_cpus) {
+            object_property_set_bool(cpuobj, "start-powered-off", true, NULL);
+        }
+
+        if (n < smp_cpus) {
+            /* 'Present' & 'Enabled' vCPUs */
+            qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
+            object_unref(cpuobj);
+        } else {
+            /* 'Present' & 'Disabled' vCPUs */
+            virt_setup_lazy_vcpu_realization(cpuobj, vms);
+        }
+
+        /*
+         * All possible vCPUs should have QOM vCPU Object pointer & arch-id.
+         * 'cpus_queue' (accessed via qemu_get_cpu()) contains only realized and
+         * enabled vCPUs. Hence, we must now populate the 'possible_cpus' list.
+         */
+        if (kvm_enabled()) {
+            /*
+             * Override the default architecture ID with the one retrieved
+             * from KVM, as they currently differ.
+             */
+            machine->possible_cpus->cpus[n].arch_id =
+                arm_cpu_mp_affinity(ARM_CPU(cs));
+        }
+        machine->possible_cpus->cpus[n].cpu = cs;
     }
 
     /* Now we've created the CPUs we can see if they have the hypvirt timer */
