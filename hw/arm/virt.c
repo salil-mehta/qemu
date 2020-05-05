@@ -221,6 +221,7 @@ static const char *valid_cpus[] = {
     ARM_CPU_TYPE_NAME("max"),
 };
 
+static CPUArchId *virt_find_cpu_slot(MachineState *ms, int vcpuid);
 static int virt_get_socket_id(const MachineState *ms, int cpu_index);
 static int virt_get_cluster_id(const MachineState *ms, int cpu_index);
 static int virt_get_core_id(const MachineState *ms, int cpu_index);
@@ -2244,6 +2245,16 @@ static void machvirt_init(MachineState *machine)
         exit(1);
     }
 
+    if (vms->gic_version < VIRT_GIC_VERSION_3 && max_cpus != smp_cpus) {
+        warn_report("For GICv%d max-cpus must be equal to smp-cpus",
+                    vms->gic_version);
+        warn_report("Overriding specified max-cpus(%d) with smp-cpus(%d)",
+                     max_cpus, smp_cpus);
+        machine->smp.max_cpus = smp_cpus;
+        mc->has_hotpluggable_cpus = false;
+        warn_report("cpu hotplug feature has been disabled");
+    }
+
     if (vms->virt && (kvm_enabled() || hvf_enabled())) {
         error_report("mach-virt: %s does not support providing "
                      "Virtualization extensions to the guest CPU",
@@ -2280,16 +2291,8 @@ static void machvirt_init(MachineState *machine)
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {
         Object *cpuobj;
-        CPUState *cs;
-
-        if (n >= smp_cpus) {
-            break;
-        }
 
         cpuobj = object_new(possible_cpus->cpus[n].type);
-
-        cs = CPU(cpuobj);
-        cs->cpu_index = n;
 
         aarch64 &= object_property_get_bool(cpuobj, "aarch64", NULL);
         object_property_set_int(cpuobj, "socket-id",
@@ -2794,6 +2797,66 @@ static const CPUArchIdList *virt_possible_cpu_arch_ids(MachineState *ms)
     return ms->possible_cpus;
 }
 
+static CPUArchId *virt_find_cpu_slot(MachineState *ms, int vcpuid)
+{
+    VirtMachineState *vms = VIRT_MACHINE(ms);
+    CPUArchId *found_cpu;
+    uint64_t mp_affinity;
+
+    assert(vcpuid >= 0 && vcpuid < ms->possible_cpus->len);
+
+    /*
+     * RFC: Question:
+     * TBD: Should mp-affinity be treated as MPIDR?
+     */
+    mp_affinity = virt_cpu_mp_affinity(vms, vcpuid);
+    found_cpu = &ms->possible_cpus->cpus[vcpuid];
+
+    assert (found_cpu->arch_id == mp_affinity);
+
+    /*
+     * RFC: Question:
+     * For KVM/TCG, MPIDR for vcpu is derived using vcpu-id.
+     * In fact, as of now there is a linear relation between
+     * vcpu-id and mpidr(see below fig.) as derived in host
+     * kvm. Slot-id is the index where vcpu with certain
+     * arch-id(=mpidr/ap-affinity) is plugged.
+     *
+     * Therefore, for now we could use the vcpu-id as slot
+     * index for getting CPUArchId of the vcpu coresponding
+     * to this slot(this view is not perfectly consistent
+     * with the ARM specification view of MPIDR_EL1).
+     * QEMU/KVM view of cpu topology makes it bit difficult
+     * to use topo-info(pkg-id, core-id, thread-id) with
+     * device_add/-device interface which might not match
+     * with what actual underlying host cpu supports.
+     * therefore question is do we care about this? and
+     * is it okay to have view of thread-id inconsistent
+     * with the host cpu? How should QEMU create PPTT
+     * for the Guest?
+     *
+     *          +----+----+----+----+----+----+----+----+
+     * MASK     |  F    F |  F   F  |  F   F  |  0   F  |
+     *          +----+----+----+----+----+----+----+----+
+     *
+     *          |         | cluster | cluster |    |core|
+     *          |<---------Package-id-------->|    |core|
+     *
+     *          +----+----+----+----+----+----+----+----+
+     * MPIDR    |||  Res  |   Aff2  |   Aff1  |  Aff0   |
+     *          +----+----+----+----+----+----+----+----+
+     *                     \         \         \   |    |
+     *                      \   8bit  \   8bit  \  |4bit|
+     *                       \<------->\<------->\ |<-->|
+     *                        \         \         \|    |
+     *          +----+----+----+----+----+----+----+----+
+     * VCPU-ID  |  Byte4  |  Byte2  |  Byte1  |  Byte0  |
+     *          +----+----+----+----+----+----+----+----+
+     */
+
+    return found_cpu;
+}
+
 static void virt_memory_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
                                  Error **errp)
 {
@@ -2837,6 +2900,95 @@ static void virt_memory_plug(HotplugHandler *hotplug_dev,
                          dev, &error_abort);
 }
 
+static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                              Error **errp)
+{
+    MachineState *ms = MACHINE(hotplug_dev);
+    ARMCPU *cpu = ARM_CPU(dev);
+    CPUState *cs = CPU(dev);
+    CPUArchId *cpu_slot;
+    int32_t min_cpuid = 0;
+    int32_t max_cpuid;
+
+    /* sanity check the cpu */
+    if (!object_dynamic_cast(OBJECT(cpu), ms->cpu_type)) {
+        error_setg(errp, "Invalid CPU type, expected cpu type: '%s'",
+                   ms->cpu_type);
+        return;
+    }
+
+    if ((cpu->thread_id < 0) || (cpu->thread_id >= ms->smp.threads)) {
+        error_setg(errp, "Invalid thread-id %u specified, must be in range 0:%u",
+                   cpu->thread_id, ms->smp.threads - 1);
+        return;
+    }
+
+    max_cpuid = ms->possible_cpus->len - 1;
+
+    /*  TBD: Intentionally Disabled to avoid compilation break. Will be enabled
+     *       in subsequent patches:
+     *
+     *  if (!dev->hotplugged) {
+     *    bool booted_with_id = (vms->boot_cpus >= ms->smp.cpus);
+     *    min_cpuid = booted_with_id ? ms->smp.cpus : 0;
+     *    max_cpuid = booted_with_id ? max_cpuid : ms->smp.cpus - 1;
+     *  }
+     */
+    if ((cpu->core_id < min_cpuid) || (cpu->core_id > max_cpuid)) {
+        error_setg(errp, "Invalid core-id %d specified, must be in range %d:%d",
+                   cpu->core_id, min_cpuid, max_cpuid);
+        return;
+    }
+
+    if ((cpu->cluster_id < 0) || (cpu->cluster_id >= ms->smp.clusters)) {
+        error_setg(errp, "Invalid cluster-id %u specified, must be in range 0:%u",
+                   cpu->cluster_id, ms->smp.clusters - 1);
+        return;
+    }
+
+    if ((cpu->socket_id < 0) || (cpu->socket_id >= ms->smp.sockets)) {
+        error_setg(errp, "Invalid socket-id %u specified, must be in range 0:%u",
+                   cpu->socket_id, ms->smp.sockets - 1);
+        return;
+    }
+
+    /*
+     * RFC: Question:
+     * For now we are not taking into account of other topo info like
+     * thread-id, socket-id to generate arch-id/mp-affinity.
+     * The way KVM/Host generates mpidr value and the way ARM spec
+     * identifies uniquely cpu within the heirarchy is bit inconsistent.
+     * Perhaps needs more discussion on this? Hence, directly using
+     * core_id as cpu_index for now. Ideally, slot-index found out using
+     * the topo info should have been the cpu-index.
+     */
+    cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, dev);
+
+    cpu_slot = virt_find_cpu_slot(ms, cs->cpu_index);
+    if (qemu_present_cpu(CPU(cpu_slot->cpu))) {
+        error_setg(errp, "cpu(id%d=%d:%d:%d:%d) with arch-id %" PRIu64 " exists",
+                   cs->cpu_index, cpu->socket_id, cpu->cluster_id, cpu->core_id,
+                   cpu->thread_id, cpu_slot->arch_id);
+        return;
+    }
+    virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
+}
+
+static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
+                          Error **errp)
+{
+    MachineState *ms = MACHINE(hotplug_dev);
+    CPUState *cs = CPU(dev);
+    CPUArchId *cpu_slot;
+
+    /* insert the cold/hot-plugged vcpu in the slot */
+    cpu_slot = virt_find_cpu_slot(ms, cs->cpu_index);
+    cpu_slot->cpu = OBJECT(dev);
+
+    cs->disabled = false;
+    return;
+}
+
 static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                                             DeviceState *dev, Error **errp)
 {
@@ -2878,6 +3030,8 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
         object_property_set_str(OBJECT(dev), "reserved-regions[0]",
                                 resv_prop_str, errp);
         g_free(resv_prop_str);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_pre_plug(hotplug_dev, dev, errp);
     }
 }
 
@@ -2899,6 +3053,8 @@ static void virt_machine_device_plug_cb(HotplugHandler *hotplug_dev,
         virt_memory_plug(hotplug_dev, dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI)) {
         virtio_md_pci_plug(VIRTIO_MD_PCI(dev), MACHINE(hotplug_dev), errp);
+    } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_plug(hotplug_dev, dev, errp);
     }
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
@@ -2983,7 +3139,8 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
     if (device_is_dynamic_sysbus(mc, dev) ||
         object_dynamic_cast(OBJECT(dev), TYPE_PC_DIMM) ||
         object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_MD_PCI) ||
-        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI)) {
+        object_dynamic_cast(OBJECT(dev), TYPE_VIRTIO_IOMMU_PCI) ||
+        object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         return HOTPLUG_HANDLER(machine);
     }
     return NULL;
@@ -3060,6 +3217,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
 #endif
     mc->get_default_cpu_node_id = virt_get_default_cpu_node_id;
     mc->kvm_type = virt_kvm_type;
+    mc->has_hotpluggable_cpus = true;
     assert(!mc->get_hotplug_handler);
     mc->get_hotplug_handler = virt_machine_get_hotplug_handler;
     hc->pre_plug = virt_machine_device_pre_plug_cb;
