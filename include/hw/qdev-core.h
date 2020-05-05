@@ -571,6 +571,25 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_disable - Initiate administrative disablement and power-off of device
+ * @dev:   The device to be administratively powered off
+ * @bus:   The bus on which the device resides (may be NULL for CPUs)
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function initiates an administrative transition of the device into a
+ * DISABLED state. This may trigger a graceful shutdown process depending on
+ * platform capabilities. For ACPI platforms, this typically involves notifying
+ * the guest via events such as Notify(..., 0x03) and executing _EJx.
+ *
+ * Once completed, the device's operational power is turned off and it is
+ * marked as administratively DISABLED. Further guest usage is blocked until
+ * re-enabled by host-side policy.
+ *
+ * Returns true on success; false if an error occurs, with @errp populated.
+ */
+bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
+
+/**
  * qdev_unrealize: Unrealize a device
  * @dev: device to unrealize
  *
