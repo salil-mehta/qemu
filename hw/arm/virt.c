@@ -2377,12 +2377,9 @@ static void machvirt_init(MachineState *machine)
 
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {
+        CPUArchId *cpu_slot;
         Object *cpuobj;
         CPUState *cs;
-
-        if (n >= smp_cpus) {
-            break;
-        }
 
         cpuobj = object_new(possible_cpus->cpus[n].type);
 
@@ -2393,8 +2390,35 @@ static void machvirt_init(MachineState *machine)
 
         virt_cpu_set_properties(cpuobj, &error_abort);
 
-        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
-        object_unref(cpuobj);
+        if (n < smp_cpus) {
+            /* pre-plugged vCPU */
+            qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
+            object_unref(cpuobj);
+        } else {
+            /* cold- or hot-plugged vCPU */
+
+            /*
+             * [!] Constraint: The ARM CPU architecture does not permit new CPUs
+             * to be added after system initialization.
+             *
+             * Workaround: Pre-create KVM vCPUs even for those that are not yet
+             * plugged, keeping them `parked` and in an `unrealized` state
+             * within QEMU until they are cold- or hot-plugged.
+             */
+            if (kvm_enabled()) {
+                kvm_arm_create_host_vcpu(ARM_CPU(cs));
+            }
+        }
+
+        cpu_slot = virt_get_possible_cpu_arch_id(n);
+        if (kvm_enabled()) {
+            /*
+             * Override the default architecture ID with the one retrieved
+             * from KVM, as they currently differ.
+             */
+            cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
+        }
+        cpu_slot->cpu = cs;
     }
 
     /* Now we've created the CPUs we can see if they have the hypvirt timer */
