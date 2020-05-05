@@ -14,6 +14,7 @@
 #include "qapi/qapi-types-misc-arm.h"
 #include "system/kvm.h"
 #include "target/arm/cpu-qom.h"
+#include "target/arm/cpu.h"
 
 #define KVM_ARM_VGIC_V2   (1 << 0)
 #define KVM_ARM_VGIC_V3   (1 << 1)
@@ -99,6 +100,17 @@ bool kvm_arm_cpu_post_load(ARMCPU *cpu);
 void kvm_arm_reset_vcpu(ARMCPU *cpu);
 
 struct kvm_vcpu_init;
+
+/**
+ * kvm_arm_create_host_vcpu:
+ * @cpu: ARMCPU
+ *
+ * Called to pre-create possible KVM vCPU within the host during the
+ * `virt_machine` initialization phase. This pre-created vCPU will be parked and
+ * will be reused when ARM QOM vCPU is actually hotplugged.
+ */
+void kvm_arm_create_host_vcpu(ARMCPU *cpu);
+
 /**
  * kvm_arm_create_scratch_host_vcpu:
  * @fdarray: filled in with kvmfd, vmfd, cpufd file descriptors in that order
@@ -181,6 +193,41 @@ bool kvm_arm_mte_supported(void);
  * Returns true if KVM can enable EL2 and false otherwise.
  */
 bool kvm_arm_el2_supported(void);
+
+/**
+ * kvm_arm_feature_finalized:
+ * @cpu: ARMCPU pointer
+ * @feat: Feature index (e.g. KVM_ARM_VCPU_SVE)
+ *
+ * Returns true if the specified KVM feature has already been finalized
+ * for this CPU, false otherwise. Each bit of the
+ * cpu->kvm_finalized_features[] array represents a single finalized
+ * KVM_ARM_VCPU_* feature. This bitmap mirrors the structure of
+ * cpu->kvm_init_features[] but records which features have been
+ * successfully finalized via kvm_arm_vcpu_finalize().
+ *
+ * Returns: true if feature 'feat' is finalized, false otherwise.
+ */
+static inline bool kvm_arm_feature_finalized(ARMCPU *cpu, unsigned feat)
+{
+    return cpu->kvm_finalized_features[feat / 32] & (1u << (feat % 32));
+}
+
+/**
+ * kvm_arm_set_feature_finalized:
+ * @cpu: ARMCPU pointer
+ * @feat: Feature index (e.g. KVM_ARM_VCPU_SVE)
+ *
+ * Marks the specified KVM feature as finalized in
+ * cpu->kvm_finalized_features[]. This function should be called once the
+ * corresponding feature has been successfully programmed and finalized
+ * through kvm_arm_vcpu_finalize().
+ */
+static inline void kvm_arm_set_feature_finalized(ARMCPU *cpu, unsigned feat)
+{
+    cpu->kvm_finalized_features[feat / 32] |= (1u << (feat % 32));
+}
+
 #else
 
 static inline bool kvm_arm_aarch32_supported(void)
@@ -197,6 +244,17 @@ static inline bool kvm_arm_el2_supported(void)
 {
     return false;
 }
+
+static inline bool kvm_arm_feature_finalized(ARMCPU *cpu, unsigned feat)
+{
+    g_assert_not_reached();
+}
+
+static inline void kvm_arm_set_feature_finalized(ARMCPU *cpu, unsigned feat)
+{
+    g_assert_not_reached();
+}
+
 #endif
 
 /**
