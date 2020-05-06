@@ -34,7 +34,7 @@
 #include "system/kvm.h"
 #include "system/whpx.h"
 #include "system/hvf.h"
-
+#include "hw/core/boards.h"
 
 static void gicv3_gicd_no_migration_shift_bug_post_load(GICv3State *cs)
 {
@@ -372,6 +372,7 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 {
     GICv3State *s = ARM_GICV3_COMMON(dev);
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     int i, rdist_capacity, cpuidx;
 
     /*
@@ -439,7 +440,9 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
     s->cpu = g_new0(GICv3CPUState, s->num_cpu);
 
     for (i = 0; i < s->num_cpu; i++) {
-        CPUState *cpu = qemu_get_cpu(s->first_cpu_idx + i);
+        CPUState *cpu = mc->has_online_capable_cpus ?
+            machine_get_possible_cpu(s->first_cpu_idx + i) :
+            qemu_get_cpu(s->first_cpu_idx + i);
         uint64_t cpu_affid;
 
         s->cpu[i].cpu = cpu;
