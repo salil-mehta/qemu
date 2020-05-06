@@ -1383,6 +1383,20 @@ CPUState *machine_get_possible_cpu(int64_t cpu_index)
     return NULL;
 }
 
+CPUArchId *machine_get_possible_cpu_arch_id(int64_t cpu_index)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    CPUArchIdList *possible_cpus = ms->possible_cpus;
+
+    for (int i = 0; i < possible_cpus->len; i++) {
+        if (possible_cpus->cpus[i].cpu &&
+            possible_cpus->cpus[i].cpu->cpu_index == cpu_index) {
+            return &possible_cpus->cpus[i];
+        }
+    }
+    return NULL;
+}
+
 static char *cpu_slot_to_string(const CPUArchId *cpu)
 {
     GString *s = g_string_new(NULL);
