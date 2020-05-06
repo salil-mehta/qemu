@@ -24,6 +24,7 @@
 #include "hw/intc/arm_gicv3_common.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
+#include "sysemu/cpus.h"
 #include "sysemu/kvm.h"
 #include "sysemu/runstate.h"
 #include "kvm_arm.h"
@@ -458,6 +459,16 @@ static void kvm_arm_gicv3_put(GICv3State *s)
         GICv3CPUState *c = &s->cpu[ncpu];
         int num_pri_bits;
 
+        /*
+         * We must ensure that we do not attempt to access or update KVM GICC
+         * registers if their corresponding QOM `GICv3CPUState` is marked as
+         * 'inaccessible', either because their corresponding QOM vCPU objects
+         * do not exist or are disabled due to hot-unplug action.
+         */
+        if (!gicv3_cpu_accessible(c)) {
+            continue;
+        }
+
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, true);
         kvm_gicc_access(s, ICC_CTLR_EL1, ncpu,
                         &c->icc_ctlr_el1[GICV3_NS], true);
@@ -615,6 +626,14 @@ static void kvm_arm_gicv3_get(GICv3State *s)
     for (ncpu = 0; ncpu < s->num_cpu; ncpu++) {
         GICv3CPUState *c = &s->cpu[ncpu];
         int num_pri_bits;
+
+        /*
+         * don't attempt to access KVM VGIC for the disabled vCPUs where
+         * GICv3CPUState is inaccessible.
+         */
+        if (!gicv3_cpu_accessible(c)) {
+            continue;
+        }
 
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, false);
         kvm_gicc_access(s, ICC_CTLR_EL1, ncpu,
@@ -815,7 +834,9 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < s->num_cpu; i++) {
         ARMCPU *cpu = ARM_CPU(qemu_get_cpu(i));
 
-        define_arm_cp_regs(cpu, gicv3_cpuif_reginfo);
+        if (gicv3_cpu_accessible(&s->cpu[i])) {
+            define_arm_cp_regs(cpu, gicv3_cpuif_reginfo);
+        }
     }
 
     /* Try to create the device via the device control API */
