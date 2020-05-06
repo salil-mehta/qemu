@@ -24,10 +24,12 @@
 #ifndef HW_ARM_GICV3_COMMON_H
 #define HW_ARM_GICV3_COMMON_H
 
+#include "hw/core/boards.h"
 #include "hw/core/sysbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "qom/object.h"
 #include "qemu/notify.h"
+#include "qapi/error.h"
 
 /*
  * Maximum number of possible interrupts, determined by the GIC architecture.
@@ -165,6 +167,7 @@ struct GICv3CPUState {
     uint64_t icc_apr[3][4];
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
+    bool gicc_accessible;
 
     /* For KVM, cached copy of the kernel reset value of ICC_CTLR_EL1 */
     uint64_t kvm_reset_icc_ctlr_el1;
@@ -343,4 +346,34 @@ const char *gicv3_class_name(void);
 /* HVF vGIC-specific state: stubbed out on a build with HVF disabled */
 extern const VMStateDescription vmstate_gicv3_hvf;
 
+/**
+ * gicv3_gicc_accessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: CPU interface index within this GIC instance
+ *
+ * Returns: true if the machine has no online-capable CPUs, or the GICC
+ * interface for @cpu is administratively accessible. On machines with
+ * online-capable CPUs, query the QOM property "gicc-accessible[%d]".
+ */
+static inline bool gicv3_gicc_accessible(Object *obj, int cpu)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+    g_autofree gchar *propname = NULL;
+    Error *local_err = NULL;
+    bool value;
+
+    /* Machines without online-capable CPUs have no admin-state restriction. */
+    if (!mc->has_online_capable_cpus) {
+        return true;
+    }
+
+    propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    value = object_property_get_bool(obj, propname, &local_err);
+    if (local_err) {
+        error_report_err(local_err);
+        return false;
+    }
+
+    return value;
+}
 #endif
