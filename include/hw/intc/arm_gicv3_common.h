@@ -165,6 +165,13 @@ struct GICv3CPUState {
     uint64_t icc_apr[3][4];
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
+    /*
+     * Shadow copy of ICC_CTLR_EL1 architectural default. Fetched once per-vCPU
+     * when no vCPUs are running, and reused on reset to avoid calling
+     * kvm_device_access() in the hot path.
+     */
+    uint64_t icc_ctlr_arch_def[2]; /* per-secstate (NS=0,S=1) */
+    bool icc_ctlr_arch_def_valid;
     bool gicc_accessible;
 
     /* Virtualization control interface */
