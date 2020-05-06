@@ -462,6 +462,26 @@ struct MachineState {
 };
 
 /*
+ * machine_get_possible_cpu_arch_id:
+ * @cpu_index: logical cpu_index to search for
+ *
+ * Return a pointer to the CPUArchId entry matching the given @cpu_index
+ * in the current machine's MachineState. The possible_cpus array holds
+ * the full set of CPUs that the machine could support, including those
+ * that may be created as disabled or taken offline.
+ *
+ * The slot index in ms->possible_cpus[] is always sequential, but the
+ * logical cpu_index values are assigned by QEMU and may or may not be
+ * sequential depending on the implementation of a particular machine.
+ * Direct indexing by cpu_index is therefore unsafe in general. This
+ * helper performs a linear search of the possible_cpus array to find
+ * the matching entry.
+ *
+ * Returns: pointer to the matching CPUArchId, or NULL if not found.
+ */
+CPUArchId *machine_get_possible_cpu_arch_id(int64_t cpu_index);
+
+/*
  * The macros which follow are intended to facilitate the
  * definition of versioned machine types, using a somewhat
  * similar pattern across targets.
