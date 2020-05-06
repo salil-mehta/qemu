@@ -436,10 +436,15 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
     s->cpu = g_new0(GICv3CPUState, s->num_cpu);
 
     for (i = 0; i < s->num_cpu; i++) {
-        CPUState *cpu = qemu_get_cpu(i);
+        CPUState *cpu = qemu_get_possible_cpu(i);
         uint64_t cpu_affid;
 
-        s->cpu[i].cpu = cpu;
+        /*
+         * Accordingly, set the QOM `GICv3CPUState` as either accessible or
+         * inaccessible based on the `CPUState` of the associated QOM vCPU.
+         */
+        gicv3_set_cpustate(&s->cpu[i], cpu, qemu_enabled_cpu(cpu));
+
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */
         gicv3_set_gicv3state(cpu, &s->cpu[i]);
