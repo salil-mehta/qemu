@@ -457,6 +457,16 @@ static void kvm_arm_gicv3_put(GICv3State *s)
         GICv3CPUState *c = &s->cpu[ncpu];
         int num_pri_bits;
 
+        /*
+         * We must ensure that we do not attempt to access or update KVM GICC
+         * registers if their corresponding QOM `GICv3CPUState` is marked as
+         * 'inaccessible', because their corresponding QOM vCPU objects
+         * are in administratively 'disabled' state.
+         */
+        if (!gicv3_gicc_accessible(OBJECT(s), ncpu)) {
+            continue;
+        }
+
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, true);
         kvm_gicc_access(s, ICC_CTLR_EL1, ncpu,
                         &c->icc_ctlr_el1[GICV3_NS], true);
@@ -614,6 +624,14 @@ static void kvm_arm_gicv3_get(GICv3State *s)
     for (ncpu = 0; ncpu < s->num_cpu; ncpu++) {
         GICv3CPUState *c = &s->cpu[ncpu];
         int num_pri_bits;
+
+        /*
+         * don't attempt to access KVM VGIC for the disabled vCPUs where
+         * GICv3CPUState is inaccessible.
+         */
+        if (!gicv3_gicc_accessible(OBJECT(s), ncpu)) {
+            continue;
+        }
 
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, false);
         kvm_gicc_access(s, ICC_CTLR_EL1, ncpu,
