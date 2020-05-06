@@ -320,6 +320,29 @@ bool qdev_disable(DeviceState *dev, Error **errp)
                                    errp));
 }
 
+int qdev_get_admin_power_state(DeviceState *dev)
+{
+    if (!dev) {
+        return DEVICE_ADMIN_POWER_STATE_REMOVED;
+    }
+
+    if (check_admin_state_change_support(dev)) {
+        return object_property_get_enum(OBJECT(dev), "admin_power_state",
+                                        "DeviceAdminPowerState", NULL);
+    }
+
+    /*
+     * fallback to existing cpu hotplug behaviour i.e. any present cpus
+     * are also enabled
+     */
+    return DEVICE_ADMIN_POWER_STATE_ENABLED;
+}
+
+bool qdev_check_enabled(DeviceState *dev)
+{
+    return qdev_get_admin_power_state(dev) == DEVICE_ADMIN_POWER_STATE_ENABLED;
+}
+
 bool qdev_machine_modified(void)
 {
     return qdev_hot_added || qdev_hot_removed;
