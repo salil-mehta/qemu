@@ -119,6 +119,18 @@ MemoryRegion *machine_consume_memdev(MachineState *machine,
                                      HostMemoryBackend *backend);
 
 /**
+ * machine_get_possible_cpu: Gets 'CPUState' for the CPU with the given logical
+ * cpu_index. The slot index in possible_cpus[] list is always sequential, but
+ * 'cpu_index' values may not be sequential depending on machine implementation
+ * (e.g. with hotplug/unplug). Therefore, this function must scan the list to
+ * find a match.
+ * @cpu_index: logical cpu index to search for 'CPUState'
+ *
+ * Returns: pointer to CPUState, or NULL if not found.
+ */
+CPUState *machine_get_possible_cpu(int64_t cpu_index);
+
+/**
  * CPUArchId:
  * @arch_id - architecture-dependent CPU ID of present or possible CPU
  * @cpu - pointer to corresponding CPU object if it's present on NULL otherwise
