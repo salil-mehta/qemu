@@ -27,6 +27,7 @@
 #include "qemu/module.h"
 #include "system/kvm.h"
 #include "system/runstate.h"
+#include "system/cpus.h"
 #include "kvm_arm.h"
 #include "gicv3_internal.h"
 #include "vgic_common.h"
@@ -681,13 +682,73 @@ static void kvm_arm_gicv3_get(GICv3State *s)
     }
 }
 
+/* Caller must hold the iothread (BQL). */
+static inline void
+kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
+                                      bool *valid)
+{
+    const uint64_t attr = (uint64_t)KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer);
+    const int group = KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS;
+    GICv3State *s = c->gic;
+    uint64_t val = 0;
+    int ret;
+
+    assert(regval && valid);
+
+    if (*valid) {
+        /* Fast path: return cached (no vCPU pausing required). */
+        c->icc_ctlr_el1[GICV3_NS] = regval[GICV3_NS];
+        c->icc_ctlr_el1[GICV3_S] = regval[GICV3_S];
+        return;
+    }
+
+    ret = kvm_device_access(s->dev_fd, group, attr, &val, false, NULL);
+    if (ret == -EBUSY || ret == -EAGAIN) {
+        int tries;
+
+        /* One-time heavy path: avoid contention by pausing all vCPUs. */
+        pause_all_vcpus();
+        /*
+         * Even with vCPUs paused, we cannot fully rule out a non-vCPU context
+         * temporarily holding KVM vCPU mutexes; treat -EBUSY/-EAGAIN as
+         * transient and retry a few times. Final attempt aborts in-loop.
+         */
+        for (tries = 0; tries < 5; tries++) {
+            Error **errp = (tries == 4) ? &error_abort : NULL;
+
+            ret = kvm_device_access(s->dev_fd, group, attr, &val, false, errp);
+            if (!ret) {
+                break;
+            }
+            if (ret != -EBUSY && ret != -EAGAIN) {
+               error_setg_errno(&error_abort, -ret,
+                                "KVM_GET_DEVICE_ATTR failed: Group %d "
+                                "attr 0x%016" PRIx64, group, attr);
+               /* not reached */
+            }
+            g_usleep(50);
+        }
+        resume_all_vcpus();
+    }
+
+    /* Success: publish and seed cache. */
+    c->icc_ctlr_el1[GICV3_NS] = val;
+    c->icc_ctlr_el1[GICV3_S] = val;
+
+    regval[GICV3_NS] = c->icc_ctlr_el1[GICV3_NS];
+    regval[GICV3_S] = c->icc_ctlr_el1[GICV3_S];
+    *valid = true;
+}
+
 static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
 {
     GICv3State *s;
     GICv3CPUState *c;
+    ARMCPU *cpu;
 
     c = (GICv3CPUState *)env->gicv3state;
     s = c->gic;
+    cpu = ARM_CPU(c->cpu);
 
     c->icc_pmr_el1 = 0;
     /*
@@ -713,11 +774,33 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     }
 
     /* Initialize to actual HW supported configuration */
-    kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
-                      KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer),
-                      &c->icc_ctlr_el1[GICV3_NS], false, &error_abort);
-
-    c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+    /*
+     * Avoid racy VGIC CPU sysreg reads while vCPUs are running. KVM requires
+     * pausing all vCPUs for ICC_* sysregs accesses to prevent races with
+     * in-flight IRQ delivery (e.g. EOImode etc.).
+     *
+     * To keep the reset path fast, cache the architectural default and the
+     * guest GICv3 driver configured ICC_CTLR_EL1 on the first access and then
+     * reuse that for subsequent resets. Most fields in this register are
+     * invariants throughout the life of VM. Fields EOImode, PMHE and CBPR are
+     * pseudo static and dont change once configured by guest driver.
+     */
+    if (cpu->first_psci_on_request_seen || s->guest_gicc_initialized) {
+        if (!s->guest_gicc_initialized) {
+            s->guest_gicc_initialized = true;
+        }
+        kvm_gicc_get_cached_icc_ctlr_el1(c, c->icc_ctlr_configured,
+                                         &c->icc_ctlr_configured_valid);
+    } else {
+        /*
+         * kernel has not loded yet. It safe to assume not other vCPU is in
+         * KVM_RUN except vCPU 0 at this moment. Just in case, if there is
+         * other priviledged context of KVM accessing the register then we
+         * KVM device access can potentially return -EBUSY.
+         */
+        kvm_gicc_get_cached_icc_ctlr_el1(c, c->icc_ctlr_arch_def,
+                                         &c->icc_ctlr_arch_def_valid);
+    }
 }
 
 static void kvm_arm_gicv3_reset_hold(Object *obj, ResetType type)
