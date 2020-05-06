@@ -96,4 +96,23 @@ static inline bool acpi_persistent_cpu(CPUState *cpu)
      */
     return cpu && cpu->acpi_persistent;
 }
+
+/**
+ * acpi_get_cpu_archid:
+ * @cpu_index: possible vCPU for which arch-id needs to be retreived
+ *
+ * Fetches the vCPU arch-id of the possible vCPU. This should be same
+ * same as the one configured at KVM Host.
+ *
+ * Returns: arch-id of the possible vCPU
+ */
+static inline uint64_t acpi_get_cpu_archid(int cpu_index)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    const CPUArchIdList *possible_cpus = ms->possible_cpus;
+
+    assert((cpu_index >= 0) && (cpu_index < possible_cpus->len));
+
+    return possible_cpus->cpus[cpu_index].arch_id;
+}
 #endif
