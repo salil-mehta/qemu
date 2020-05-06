@@ -602,6 +602,63 @@ extern CPUTailQ cpus_queue;
 #define CPU_FOREACH_SAFE(cpu, next_cpu) \
     QTAILQ_FOREACH_SAFE_RCU(cpu, &cpus_queue, node, next_cpu)
 
+
+/**
+ * CPU_FOREACH_POSSIBLE(cpu_, archid_list_)
+ *
+ * Iterate over all entries in a CPUArchIdList, assigning each entry’s
+ * CPUState* to @cpu_. This hides the loop index and reads like a normal
+ * C for-loop.
+ *
+ * A CPUArchIdList represents the set of *possible* CPUs for a machine.
+ * Each entry contains:
+ *   - @cpu:        CPUState pointer, or NULL if not realized yet
+ *   - @arch_id:    architecture-specific identifier (e.g. MPIDR)
+ *   - @vcpus_count: number of vCPUs represented (usually 1)
+ *
+ * The list models *possible* CPUs: it includes (a) currently plugged vCPUs
+ * made available through hotplug, (b) present (and perhaps visible to OSPM)
+ * but kept ACPI-disabled vCPUs, and (c) reserved slots for CPUs that may be
+ * created in the future. This supports co-existence of hotpluggable and
+ * admin-disabled vCPUs if architectures permit.
+ *
+ * Example:
+ *
+ *   CPUArchIdList *alist = machine_possible_cpus(ms);
+ *   CPUState *cpu;
+ *
+ *   CPU_FOREACH_POSSIBLE(cpu, alist) {
+ *       if (!cpu) {
+ *           continue; // reserved slot for hotplug case
+ *       }
+ *
+ *       < Do Something >
+ *   }
+ *
+ * Expanded equivalent:
+ *
+ *   for (int __cpu_idx = 0; alist && __cpu_idx < alist->len; __cpu_idx++) {
+ *       if ((cpu = alist->cpus[__cpu_idx].cpu, 1)) {
+ *           if (!cpu) {
+ *               continue;
+ *           }
+ *
+ *           < Do Something >
+ *       }
+ *   }
+ *
+ * Notes:
+ *   - Callers must check @cpu for NULL when filtering unplugged CPUs.
+ *   - Mirrors the style of CPU_FOREACH(), but iterates all *possible* CPUs
+ *     (plugged, ACPI-disabled, and reserved slots) rather than only present
+ *     and enabled vCPUs.
+ */
+#define CPU_FOREACH_POSSIBLE(cpu_, archid_list_) \
+    for (int __cpu_idx = 0; \
+         (archid_list_) && __cpu_idx < (archid_list_)->len; \
+         __cpu_idx++) \
+        if (((cpu_) = (archid_list_)->cpus[__cpu_idx].cpu, 1))
+
 extern __thread CPUState *current_cpu;
 
 /**
