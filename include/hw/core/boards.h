@@ -458,6 +458,27 @@ struct MachineState {
 };
 
 /*
+ * machine_get_possible_cpu: Gets 'CPUState' for the CPU with the given slot
+ * @slot: index into ms->possible_cpus->cpus[]
+ *
+ * Return the CPU object stored in possible CPU slot @slot. This is a
+ * slot-index lookup, not a lookup by CPUState::cpu_index. Callers must not
+ * assume that @slot and CPUState::cpu_index are generically equivalent for all
+ * machines.
+ *
+ * Returns: CPUState pointer, or NULL if @slot is empty.
+ */
+static inline CPUState* machine_get_possible_cpu(uint32_t slot)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    const CPUArchIdList *possible_cpus = ms->possible_cpus;
+
+    assert(possible_cpus && (slot < possible_cpus->len));
+
+    return possible_cpus->cpus[slot].cpu;
+}
+
+/*
  * The macros which follow are intended to facilitate the
  * definition of versioned machine types, using a somewhat
  * similar pattern across targets.
