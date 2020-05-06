@@ -795,6 +795,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     vms->gic = qdev_new(gictype);
     qdev_prop_set_uint32(vms->gic, "revision", revision);
     qdev_prop_set_uint32(vms->gic, "num-cpu", max_cpus);
+    qdev_prop_set_uint32(vms->gic, "num-smp-cpu", smp_cpus);
     /* Note that the num-irq property counts both internal and external
      * interrupts; there are always 32 of the former (mandated by GIC spec).
      */

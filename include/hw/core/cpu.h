@@ -951,6 +951,18 @@ static inline bool cpu_in_exclusive_context(const CPUState *cpu)
 CPUState *qemu_get_cpu(int index);
 
 /**
+ * qemu_get_possible_cpu:
+ * @index: The CPUState@cpu_index value of the CPU to obtain.
+ *         Input index MUST be in range [0, Max Possible CPUs)
+ *
+ * If CPUState object exists,then it gets a CPU matching
+ * @index in the possible CPU array.
+ *
+ * Returns: The possible CPU or %NULL if CPU does not exist.
+ */
+CPUState *qemu_get_possible_cpu(int index);
+
+/**
  * cpu_exists:
  * @id: Guest-exposed CPU ID to lookup.
  *
