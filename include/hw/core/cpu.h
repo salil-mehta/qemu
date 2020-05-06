@@ -618,6 +618,11 @@ extern CPUTailQ cpus_queue;
 #define CPU_FOREACH_SAFE(cpu, next_cpu) \
     QTAILQ_FOREACH_SAFE_RCU(cpu, &cpus_queue, node, next_cpu)
 
+#define CPU_FOREACH_POSSIBLE(cpu, poslist) \
+    for (int iter = 0; \
+         iter < (poslist)->len && ((cpu) = (poslist)->cpus[iter].cpu, 1); \
+         iter++)
+
 extern __thread CPUState *current_cpu;
 
 /**
