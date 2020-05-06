@@ -190,6 +190,7 @@ struct GICv3CPUState {
     uint64_t icc_apr[3][4];
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
+    bool gicc_accessible;
 
     /* Virtualization control interface */
     uint64_t ich_apr[3][4]; /* ich_apr[GICV3_G1][x] never used */
@@ -255,6 +256,7 @@ struct GICv3State {
     uint32_t nb_redist_regions; /* number of redist regions */
 
     uint32_t num_cpu;
+    uint32_t num_smp_cpu;
     uint32_t num_irq;
     uint32_t revision;
     bool lpi_enable;
@@ -353,4 +355,39 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
  */
 const char *gicv3_class_name(void);
 
+/**
+ * gicv3_cpu_accessible
+ *
+ * The `GICv3CPUState` can become inaccessible if the associated `CPUState` is
+ * either unavailable or in a disabled state. This state is independent of the
+ * KVM VGIC and is not compliant with ARM CPU architecture (i.e. there is no
+ * way we can explicitly enable/disable ARM GIC CPU interface). This change
+ * is specific to QOM only.
+ *
+ * Returns: True if accessible otherwise False
+ */
+static inline bool gicv3_cpu_accessible(GICv3CPUState *gicc)
+{
+    assert(gicc);
+    return gicc->gicc_accessible;
+}
+
+/**
+ * gicv3_set_cpustate
+ *
+ * Sets `GICv3CPUState` and the associated `CPUState` as accessible and
+ * available for use
+ */
+static inline void gicv3_set_cpustate(GICv3CPUState *s,
+                                      CPUState *cpu,
+                                      bool gicc_accessible)
+{
+    if (gicc_accessible) {
+        s->cpu = cpu;
+        s->gicc_accessible = true;
+    } else {
+        s->cpu = NULL;
+        s->gicc_accessible = false;
+    }
+}
 #endif
