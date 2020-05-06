@@ -27,6 +27,7 @@
 #include "hw/sysbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "qom/object.h"
+#include "qapi/error.h"
 
 /*
  * Maximum number of possible interrupts, determined by the GIC architecture.
@@ -164,6 +165,7 @@ struct GICv3CPUState {
     uint64_t icc_apr[3][4];
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
+    bool gicc_accessible;
 
     /* Virtualization control interface */
     uint64_t ich_apr[3][4]; /* ich_apr[GICV3_G1][x] never used */
@@ -329,4 +331,26 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
  */
 const char *gicv3_class_name(void);
 
+/**
+ * gicv3_gicc_accessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU whose GICC accessibility is being queried
+ *
+ * Returns: true if the GICC interface for vCPU @cpu is accessible.
+ * Uses QOM property lookup for "gicc-accessible[%d]".
+ */
+static inline bool gicv3_gicc_accessible(Object *obj, int cpu)
+{
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    Error *local_err = NULL;
+    bool value;
+
+    value = object_property_get_bool(obj, propname, &local_err);
+    if (local_err) {
+        error_report_err(local_err);
+        return false;
+    }
+
+    return value;
+}
 #endif

@@ -590,6 +590,30 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_check_enabled - Check if a device is administratively enabled
+ * @dev:  The device to check
+ *
+ * This function returns whether the device is currently in administrative
+ * ENABLED state. It does not reflect runtime operational power state, but
+ * rather the host policy on whether the guest may interact with the device.
+ *
+ * Returns true if the device is administratively enabled; false otherwise.
+ */
+bool qdev_check_enabled(DeviceState *dev);
+
+/**
+ * qdev_get_admin_power_state - Query administrative power state of a device
+ * @dev:  The device whose state is being queried
+ *
+ * Returns the current administrative power state (ENABLED or DISABLED),
+ * as stored in the device's internal admin state field. This reflects
+ * host-level policy—not the operational runtime state seen by the guest.
+ *
+ * Returns an integer from the DeviceAdminPowerState enum.
+ */
+int qdev_get_admin_power_state(DeviceState *dev);
+
+/**
  * qdev_unrealize: Unrealize a device
  * @dev: device to unrealize
  *
