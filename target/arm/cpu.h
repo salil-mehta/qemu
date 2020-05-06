@@ -974,6 +974,7 @@ struct ArchCPU {
 
     /* Current power state, access guarded by BQL */
     ARMPSCIState power_state;
+    bool first_psci_on_request_seen;
 
     /* CPU has virtualization extension */
     bool has_el2;

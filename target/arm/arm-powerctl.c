@@ -68,6 +68,7 @@ static void arm_set_cpu_on_async_work(CPUState *target_cpu_state,
     ARMCPU *target_cpu = ARM_CPU(target_cpu_state);
     struct CpuOnInfo *info = (struct CpuOnInfo *) data.host_ptr;
 
+    target_cpu->first_psci_on_request_seen = true;
     /* Initialize the cpu we are turning on */
     cpu_reset(target_cpu_state);
     arm_emulate_firmware_reset(target_cpu_state, info->target_el);
