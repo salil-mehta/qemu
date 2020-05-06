@@ -588,6 +588,18 @@ static inline bool check_admin_state_change_support(DeviceState *dev)
 }
 
 /**
+ * qdev_get_admin_power_state - Query administrative power state of a device
+ * @dev:  The device whose state is being queried
+ *
+ * Returns the current administrative power state (ENABLED or DISABLED),
+ * as stored in the device's internal admin state field. This reflects
+ * host-level policy not the operational runtime state seen by the guest.
+ *
+ * Returns an integer from the DeviceAdminPowerState enum.
+ */
+int qdev_get_admin_power_state(DeviceState *dev);
+
+/**
  * qdev_unrealize: Unrealize a device
  * @dev: device to unrealize
  *
