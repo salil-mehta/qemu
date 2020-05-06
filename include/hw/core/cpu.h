@@ -538,6 +538,18 @@ struct CPUState {
     CPUPluginState *plugin_state;
 #endif
 
+    /*
+     * Some architectures do not allow the *presence* of vCPUs to be changed
+     * after the guest has booted, based on information specified by the
+     * VMM/firmware via ACPI MADT at boot time. Thus, to enable vCPU hotplug on
+     * these architectures, possible vCPUs can have a CPUState object in a
+     * 'disabled' state or may not have a CPUState object at all. This is
+     * possible when vCPU hotplug is supported, and vCPUs are
+     * 'yet-to-be-plugged' in the QOM or have been hot-unplugged. By default,
+     * every CPUState is enabled across all architectures.
+     */
+    bool disabled;
+
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
     int cluster_index;
@@ -923,6 +935,48 @@ static inline bool cpu_in_exclusive_context(const CPUState *cpu)
  * Returns: The CPU or %NULL if there is no matching CPU.
  */
 CPUState *qemu_get_cpu(int index);
+
+/**
+ * qemu_get_possible_cpu:
+ * @index: The CPUState@cpu_index value of the CPU to obtain.
+ *         Input index MUST be in range [0, Max Possible CPUs)
+ *
+ * If CPUState object exists,then it gets a CPU matching
+ * @index in the possible CPU array.
+ *
+ * Returns: The possible CPU or %NULL if CPU does not exist.
+ */
+CPUState *qemu_get_possible_cpu(int index);
+
+/**
+ * qemu_present_cpu:
+ * @cpu: The vCPU to check
+ *
+ * Checks if the vCPU is amongst the present possible vcpus.
+ *
+ * Returns: True if it is present possible vCPU else false
+ */
+bool qemu_present_cpu(CPUState *cpu);
+
+/**
+ * qemu_enabled_cpu:
+ * @cpu: The vCPU to check
+ *
+ * Checks if the vCPU is enabled.
+ *
+ * Returns: True if it is 'enabled' else false
+ */
+bool qemu_enabled_cpu(CPUState *cpu);
+
+/**
+ * qemu_get_cpu_archid:
+ * @cpu_index: possible vCPU for which arch-id needs to be retreived
+ *
+ * Fetches the vCPU arch-id from the present possible vCPUs.
+ *
+ * Returns: arch-id of the possible vCPU
+ */
+uint64_t qemu_get_cpu_archid(int cpu_index);
 
 /**
  * cpu_exists:
