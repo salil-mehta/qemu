@@ -27,6 +27,7 @@
 #include "qemu/module.h"
 #include "system/kvm.h"
 #include "system/runstate.h"
+#include "system/cpus.h"
 #include "kvm_arm.h"
 #include "gicv3_internal.h"
 #include "vgic_common.h"
@@ -713,11 +714,30 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     }
 
     /* Initialize to actual HW supported configuration */
-    kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
-                      KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer),
-                      &c->icc_ctlr_el1[GICV3_NS], false, &error_abort);
+    /*
+     * Avoid racy VGIC CPU sysreg reads while vCPUs are running. KVM requires
+     * pausing all vCPUs for ICC_* sysregs accesses to prevent races with
+     * in-flight IRQ delivery (e.g. EOImode etc.).
+     *
+     * To keep the reset path fast, cache the architectural default ICC_CTLR_EL1
+     * on the first access and then reuse that for subsequent resets
+     */
+    if (c->icc_ctlr_arch_def_valid) {
+        c->icc_ctlr_el1[GICV3_NS] = c->icc_ctlr_arch_def[GICV3_NS];
+        c->icc_ctlr_el1[GICV3_S]  = c->icc_ctlr_arch_def[GICV3_S];
+    } else {
+        /* Worst-case fallback to KVM access */
+        pause_all_vcpus();
+        kvm_gicc_access(s, ICC_CTLR_EL1, c->cpu->cpu_index,
+                        &c->icc_ctlr_el1[GICV3_NS], false);
+        resume_all_vcpus();
+        c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
 
-    c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+        /* seed the defaults on the first access */
+        c->icc_ctlr_arch_def[GICV3_NS] = c->icc_ctlr_el1[GICV3_NS];
+        c->icc_ctlr_arch_def[GICV3_S] = c->icc_ctlr_el1[GICV3_S];
+        c->icc_ctlr_arch_def_valid = true;
+    }
 }
 
 static void kvm_arm_gicv3_reset_hold(Object *obj, ResetType type)
