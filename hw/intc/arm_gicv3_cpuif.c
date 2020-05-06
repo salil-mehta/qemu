@@ -934,6 +934,10 @@ void gicv3_cpuif_update(GICv3CPUState *cs)
     ARMCPU *cpu = ARM_CPU(cs->cpu);
     CPUARMState *env = &cpu->env;
 
+    if (!qemu_enabled_cpu(cs->cpu)) {
+        return;
+    }
+
     g_assert(bql_locked());
 
     trace_gicv3_cpuif_update(gicv3_redist_affid(cs), cs->hppi.irq,
@@ -1834,6 +1838,10 @@ static void icc_generate_sgi(CPUARMState *env, GICv3CPUState *cs,
 
     for (i = 0; i < s->num_cpu; i++) {
         GICv3CPUState *ocs = &s->cpu[i];
+
+        if (!qemu_enabled_cpu(ocs->cpu)) {
+            continue;
+        }
 
         if (irm) {
             /* IRM == 1 : route to all CPUs except self */
