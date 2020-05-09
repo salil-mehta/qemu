@@ -183,6 +183,7 @@ static inline int r14_bank_number(int mode)
 }
 
 void arm_cpu_register_gdb_regs_for_features(ARMCPU *cpu);
+void arm_cpu_unregister_gdb_regs(ARMCPU *cpu);
 void arm_translate_init(void);
 
 void arm_restore_state_to_opc(CPUState *cs,
