@@ -345,10 +345,12 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
 {
     GICv3CPUHotplugInfo *gic_info = (GICv3CPUHotplugInfo *)data;
     CPUState *cpu = gic_info->cpu;
+    ARMGICv3CommonClass *c;
     int gic_cpuif_num;
     GICv3State *s;
 
     s = ARM_GICV3_COMMON(gic_info->gic);
+    c = ARM_GICV3_COMMON_GET_CLASS(s);
 
     /* this shall get us mapped gicv3 cpuif corresponding to mpidr */
     gic_cpuif_num = arm_gicv3_get_proc_num(s, cpu);
@@ -368,7 +370,10 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
     gicv3_set_gicv3state(cpu, &s->cpu[gic_cpuif_num]);
     gicv3_set_cpustate(&s->cpu[gic_cpuif_num], cpu);
 
-    /* TODO: initialize the registers info for this newly added cpu */
+    /* initialize the registers info for this newly added cpu */
+    if (c->init_cpu_reginfo) {
+        c->init_cpu_reginfo(cpu);
+    }
 }
 
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
