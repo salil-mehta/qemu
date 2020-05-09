@@ -186,6 +186,7 @@ struct VirtMachineState {
     char *oem_id;
     char *oem_table_id;
     bool ns_el2_virt_timer_irq;
+    NotifierList cpuhp_notifiers;
 };
 
 #define VIRT_ECAM_ID(high) (high ? VIRT_HIGH_PCIE_ECAM : VIRT_PCIE_ECAM)
@@ -263,5 +264,19 @@ static inline CPUArchId *virt_get_possible_cpu_arch_id(int cpu_index)
     assert(cpu_index >= 0 && cpu_index < ms->possible_cpus->len);
 
     return &ms->possible_cpus->cpus[cpu_index];
+}
+
+static inline void virt_update_gic(VirtMachineState *vms,
+                                   CPUState *cs,
+                                   bool plugging)
+{
+    GICv3CPUHotplugInfo gic_info = {
+        .gic = vms->gic,
+        .cpu = cs,
+        .cpu_plugging = plugging
+    };
+
+    /* notify gic to stitch GICC to this new cpu */
+    notifier_list_notify(&vms->cpuhp_notifiers, &gic_info);
 }
 #endif /* QEMU_ARM_VIRT_H */
