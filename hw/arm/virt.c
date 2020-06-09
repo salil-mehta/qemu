@@ -2037,6 +2037,7 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
 {
     CPUArchIdList *possible_cpus = vms->parent.possible_cpus;
     int max_cpus = MACHINE(vms)->smp.max_cpus;
+    int smp_cpus = MACHINE(vms)->smp.cpus;
     bool aarch64, steal_time;
     CPUState *cpu;
 
@@ -2093,6 +2094,30 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
                              pamax, requested_pa_size);
                 exit(1);
             }
+        }
+    }
+
+    if (kvm_enabled() || tcg_enabled()) {
+        int i = 0;
+        CPU_FOREACH_POSSIBLE(cpu, possible_cpus) {
+            /*
+             * Release the disabled ARMCPU objects that were previously used
+             * during initialization for pre-sizing host KVM.
+             *
+             * We simulate the presence of these non-existent vCPUs to the guest
+             * via ACPI by setting `_STA.PRES = 1` (indicating they are present)
+             * and mark them as disabled vCPUs by setting `_STA.ENA = 0`,
+             * ensuring they cannot be used. These vCPUs can be added back to
+             * the guest later through hotplug operations when ARMCPU objects
+             * are recreated using the '-device_add' QMP command.
+             */
+            if (i >= smp_cpus) {
+                CPUArchId *cpu_slot;
+                cpu_slot = virt_find_cpu_slot(cpu);
+                cpu_slot->cpu = NULL;
+                object_unref(OBJECT(cpu));
+            }
+            i++;
         }
     }
 }
