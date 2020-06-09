@@ -1972,6 +1972,7 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
 {
     CPUArchIdList *possible_cpus = vms->parent.possible_cpus;
     int max_cpus = MACHINE(vms)->smp.max_cpus;
+    MachineState *ms = MACHINE(vms);
     bool aarch64, steal_time;
     CPUState *cpu;
     int n;
@@ -2018,6 +2019,31 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
             if (steal_time) {
                 kvm_arm_pvtime_init(cpu, pvtime_reg_base +
                                          cpu->cpu_index * PVTIME_SIZE_PER_CPU);
+            }
+
+            /*
+             * Now, GIC has been sized with possible cpus and we dont require
+             * disabled vcpu objects to be represented in the QOM. Release the
+             * disabled ARMCPU objects earlier used during init for pre-sizing.
+             *
+             * We fake to the guest through ACPI about the presence(_STA.PRES=1)
+             * of these non-existent vcpus at VMM/qemu and present these as
+             * disabled vcpus(_STA.ENA=0) so that they cant be used. These vcpus
+             * can be later added to the guest through hotplug exchanges when
+             * ARMCPU objects are created back again using ''device add' QMP
+             * command.
+             */
+            /*
+             * RFC: Question: Other approach could have been to keep them forever
+             * and release it only once when qemu exits as part of finalize or when
+             * new vcpu is hotplugged. In the later old could be released for the
+             * newly created object for the same vcpu?
+             */
+            if (!qemu_enabled_cpu(cpu)) {
+                CPUArchId *cpu_slot;
+                cpu_slot = virt_find_cpu_slot(ms, cpu->cpu_index);
+                cpu_slot->cpu = NULL;
+                object_unref(OBJECT(cpu));
             }
         }
     } else {
