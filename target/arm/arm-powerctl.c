@@ -13,6 +13,7 @@
 #include "cpu-qom.h"
 #include "internals.h"
 #include "arm-powerctl.h"
+#include "hw/boards.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 
@@ -27,18 +28,37 @@
         } \
     } while (0)
 
+static CPUArchId *arm_get_archid_by_id(uint64_t id)
+{
+    int n;
+    CPUArchId *arch_id;
+    MachineState *ms = MACHINE(qdev_get_machine());
+
+    /*
+     * At this point disabled CPUs don't have a CPUState, but their CPUArchId
+     * exists.
+     *
+     * TODO: Is arch_id == mp_affinity? This needs work.
+     */
+    for (n = 0; n < ms->possible_cpus->len; n++) {
+        arch_id = &ms->possible_cpus->cpus[n];
+
+        if (arch_id->arch_id == id) {
+            return arch_id;
+        }
+    }
+    return NULL;
+}
+
 CPUState *arm_get_cpu_by_id(uint64_t id)
 {
-    CPUState *cpu;
+    CPUArchId *arch_id;
 
     DPRINTF("cpu %" PRId64 "\n", id);
 
-    CPU_FOREACH(cpu) {
-        ARMCPU *armcpu = ARM_CPU(cpu);
-
-        if (armcpu->mp_affinity == id) {
-            return cpu;
-        }
+    arch_id = arm_get_archid_by_id(id);
+    if (arch_id && arch_id->cpu) {
+        return CPU(arch_id->cpu);
     }
 
     qemu_log_mask(LOG_GUEST_ERROR,
@@ -145,6 +165,7 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
 {
     CPUState *target_cpu_state;
     ARMCPU *target_cpu;
+    CPUArchId *arch_id;
     struct CpuOnInfo *info;
 
     assert(qemu_mutex_iothread_locked());
@@ -165,10 +186,19 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
     }
 
     /* Retrieve the cpu we are powering up */
-    target_cpu_state = arm_get_cpu_by_id(cpuid);
-    if (!target_cpu_state) {
+    arch_id = arm_get_archid_by_id(cpuid);
+    if (!arch_id) {
         /* The cpu was not found */
         return QEMU_ARM_POWERCTL_INVALID_PARAM;
+    }
+
+    target_cpu_state = CPU(arch_id->cpu);
+    if (!target_cpu_state || target_cpu_state->disabled) {
+        /* The cpu is not plugged in or disabled */
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "[ARM]%s: Denying attempt to online removed/disabled "
+                      "CPU%" PRId64"\n", __func__, cpuid);
+        return QEMU_ARM_POWERCTL_IS_OFF;
     }
 
     target_cpu = ARM_CPU(target_cpu_state);
