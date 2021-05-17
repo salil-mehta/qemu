@@ -912,9 +912,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
     }
 
     /*
-     * When KVM is in use, PSCI is emulated in-kernel and not by qemu.
-     * Currently KVM has its own idea about MPIDR assignment, so we
-     * override our defaults with what we get from KVM.
+     * KVM may emulate PSCI in-kernel. Currently KVM has its own idea about
+     * MPIDR assignment, so we override our defaults with what we get from KVM.
      */
     ret = kvm_get_one_reg(cs, ARM64_SYS_REG(ARM_CPU_ID_MPIDR), &mpidr);
     if (ret) {

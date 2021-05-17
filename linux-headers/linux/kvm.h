@@ -1150,6 +1150,8 @@ struct kvm_ppc_resize_hpt {
 #define KVM_CAP_DISABLE_QUIRKS2 213
 /* #define KVM_CAP_VM_TSC_CONTROL 214 */
 #define KVM_CAP_SYSTEM_EVENT_DATA 215
+#define KVM_CAP_ARM_HVC_TO_USER 224 /* TODO: as per linux 6.1-rc2 */
+#define KVM_CAP_ARM_PSCI_TO_USER 225 /* TODO: as per linux 6.1-rc2 */
 
 #ifdef KVM_CAP_IRQ_ROUTING
 

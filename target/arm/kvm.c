@@ -248,6 +248,7 @@ int kvm_arm_get_max_vm_ipa_size(MachineState *ms, bool *fixed_ipa)
 int kvm_arch_init(MachineState *ms, KVMState *s)
 {
     int ret = 0;
+    bool cap_en = true;
     /* For ARM interrupt delivery is always asynchronous,
      * whether we are using an in-kernel VGIC or not.
      */
@@ -275,6 +276,30 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
             /* Set status for supporting the external dabt injection */
             cap_has_inject_ext_dabt = kvm_check_extension(s,
                                     KVM_CAP_ARM_INJECT_EXT_DABT);
+        }
+    }
+
+    /*
+     * To handle PSCI calls in QEMU, we need KVM support HVC-to-userspace and
+     * and of course the PSCI-to-userspace capability enabled together.
+     */
+    if (kvm_vm_check_extension(kvm_state, KVM_CAP_EXIT_HYPERCALL)) {
+        if (kvm_vm_enable_cap(s, KVM_CAP_EXIT_HYPERCALL, 0)) {
+            error_report("Failed to enable KVM_CAP_EXIT_HYPERCALL cap");
+            cap_en = false;
+        }
+    }
+
+    if (cap_en && kvm_vm_check_extension(kvm_state, KVM_CAP_ARM_HVC_TO_USER)) {
+        if (kvm_vm_enable_cap(s, KVM_CAP_ARM_HVC_TO_USER, 0)) {
+            error_report("Failed to enable KVM_CAP_ARM_HVC_TO_USER cap");
+            cap_en = false;
+        }
+    }
+
+    if (cap_en && kvm_vm_check_extension(kvm_state, KVM_CAP_ARM_PSCI_TO_USER)) {
+        if (kvm_vm_enable_cap(s, KVM_CAP_ARM_PSCI_TO_USER, 0)) {
+            error_report("Failed to enable KVM_CAP_ARM_PSCI_TO_USER cap");
         }
     }
 
@@ -947,6 +972,34 @@ static int kvm_arm_handle_dabt_nisv(CPUState *cs, uint64_t esr_iss,
     return -1;
 }
 
+static int kvm_arm_handle_hypercall(CPUState *cs, uint64_t imm)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    CPUARMState *env = &cpu->env;
+
+    if (imm != 0) {
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: unexpected non-zero hypercall immediate\n",
+                      __func__);
+        return 0;
+    }
+
+    kvm_cpu_synchronize_state(cs);
+
+    cs->exception_index = EXCP_HVC;
+    env->exception.target_el = 1;
+    env->exception.syndrome = syn_aa64_hvc(imm);
+    qemu_mutex_lock_iothread();
+    arm_cpu_do_interrupt(cs);
+    qemu_mutex_unlock_iothread();
+
+    /*
+     * For PSCI, exit the kvm_run loop and process the work. Especially
+     * important if this was a CPU_OFF command and we can't return to the guest.
+     */
+    return EXCP_INTERRUPT;
+}
+
 int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
 {
     int ret = 0;
@@ -961,6 +1014,9 @@ int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
         /* External DABT with no valid iss to decode */
         ret = kvm_arm_handle_dabt_nisv(cs, run->arm_nisv.esr_iss,
                                        run->arm_nisv.fault_ipa);
+        break;
+    case KVM_EXIT_HYPERCALL:
+        ret = kvm_arm_handle_hypercall(cs, run->hypercall.nr);
         break;
     default:
         qemu_log_mask(LOG_UNIMP, "%s: un-handled exit reason %d\n",
