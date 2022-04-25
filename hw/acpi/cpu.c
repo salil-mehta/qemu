@@ -718,10 +718,13 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
             aml_append(dev, method);
 
             /* build _MAT object */
-            build_madt_cpu(i, arch_ids, madt_buf, true); /* set enabled flag */
-            aml_append(dev, aml_name_decl("_MAT",
+            if (build_madt_cpu) {
+                build_madt_cpu(i, arch_ids, madt_buf,
+                                true); /* set enabled flag */
+                aml_append(dev, aml_name_decl("_MAT",
                 aml_buffer(madt_buf->len, (uint8_t *)madt_buf->data)));
-            g_array_free(madt_buf, true);
+                g_array_free(madt_buf, true);
+            }
 
             if (CPU(arch_ids->cpus[i].cpu) != first_cpu) {
                 method = aml_method("_EJ0", 1, AML_NOTSERIALIZED);
