@@ -2157,6 +2157,22 @@ static void virt_cpu_set_properties(Object *cpuobj, const CPUArchId *cpu_slot)
             }
         }
     }
+
+    /*
+     * RFC: Question: this must only be called for the hotplugged cpus. For the
+     * cold booted secondary cpus this is taken care in boot.c. Perhaps need a
+     * better way to distinguish this for disabled cpus and set this only for
+     * hotplugged cpus in pre-plug phase - TODO!
+     */
+    if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
+        object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
+                                NULL);
+        /* Secondary CPUs start in PSCI powered-down state */
+        if (CPU(cpuobj)->cpu_index > 0) {
+            object_property_set_bool(cpuobj, "start-powered-off", true,
+                                     NULL);
+        }
+    }
 }
 
 static void machvirt_init(MachineState *machine)
