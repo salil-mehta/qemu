@@ -1759,7 +1759,7 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 
     /* release the disabled ARMCPU objects used during init for pre-sizing */
-    virt_remove_disabled_cpus(vms);
+    //virt_remove_disabled_cpus(vms);
 }
 
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
@@ -2002,6 +2002,43 @@ static void finalize_gic_version(VirtMachineState *vms)
     case VIRT_GIC_VERSION_3:
         break;
     }
+}
+
+static DeviceState *
+virt_check_hidden_cpu(DeviceListener *listener, const QDict *device_opts,
+                      Error **errp)
+{
+    CPUState *cs = container_of(listener, CPUState, device_listener);
+    int64_t node_id, socket_id, cluster_id, core_id, thread_id;
+    MachineState *ms = MACHINE(qdev_get_machine());
+    const char *id;
+    ARMCPU *cpu;
+
+    if (!device_opts)
+        return NULL;
+
+    /* make sure this is the cpu object before using it */
+    if (!object_dynamic_cast(OBJECT(cs), ms->cpu_type))
+        return NULL;
+
+    cpu = ARM_CPU(cs);
+
+    /* match the topology of the cpu being hotplugged with hidden cpu */
+    node_id = qdict_get_try_int(device_opts, "node-id", cpu->node_id);
+    socket_id = qdict_get_try_int(device_opts, "socket-id", cpu->socket_id);
+    cluster_id = qdict_get_try_int(device_opts, "cluster-id", cpu->cluster_id);
+    core_id = qdict_get_try_int(device_opts, "core-id", cpu->core_id);
+    thread_id = qdict_get_try_int(device_opts, "thread-id", cpu->thread_id);
+
+    if ((cpu->thread_id != thread_id) || (cpu->core_id != core_id) ||
+        (cpu->cluster_id != cluster_id) || (cpu->socket_id != socket_id) ||
+        (cpu->node_id != node_id))
+        return NULL;
+
+    cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, DEVICE(cpu));
+    ms->possible_cpus->cpus[cs->cpu_index].cpu_hidden = false;
+
+    return DEVICE(cpu);
 }
 
 /*
@@ -2334,10 +2371,10 @@ static void machvirt_init(MachineState *machine)
                                 virt_get_thread_id(machine, n), NULL);
 
         if (n < smp_cpus) {
-            char *core_id = g_strdup_printf("core%d", n);
-            qdev_set_id(DEVICE(cpuobj), core_id, &error_fatal);
+            //char *core_id = g_strdup_printf("core%d", n);
+            //qdev_set_id(DEVICE(cpuobj), core_id, &error_fatal);
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
-            object_unref(cpuobj);
+            //object_unref(cpuobj);
         } else {
             CPUArchId *cpu_slot;
 
@@ -2384,7 +2421,16 @@ static void machvirt_init(MachineState *machine)
              *    We will use the (ii) approach and release the ARMCPU objects after GIC
              *    and machine has been initialized in machine_init_done() phase
              */
-             cpu_slot->cpu = OBJECT(cs);
+             cpu_slot->cpu = OBJECT(cs); /* (i) plug but keep them unrealized */
+             cpu_slot->cpu_hidden = true; /* and hidden */
+
+             /*
+              * register a device listener for all the disabled vCPUs
+              * so that they can be deferred realize during hot-add
+              * and can made enabled
+              */
+             cs->device_listener.check_hidden_device = virt_check_hidden_cpu;
+             device_listener_register(&cs->device_listener);
         }
     }
     fdt_add_timer_nodes(vms);
@@ -2806,6 +2852,7 @@ static const CPUArchIdList *virt_possible_cpu_arch_ids(MachineState *ms)
         ms->possible_cpus->cpus[n].vcpus_count = smp_threads;
         ms->possible_cpus->cpus[n].arch_id =
             virt_cpu_mp_affinity(vms, n);
+        ms->possible_cpus->cpus[n].cpu_hidden = false;
 
         assert(!mc->smp_props.dies_supported);
         ms->possible_cpus->cpus[n].props.has_socket_id = true;
@@ -3079,6 +3126,7 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     /* insert the cold/hot-plugged vcpu in the slot */
     cpu_slot = virt_find_cpu_slot(ms, cs->cpu_index);
     cpu_slot->cpu = OBJECT(dev);
+    cpu_slot->cpu_hidden = false;
 
     if (dev->hotplugged) {
         HotplugHandlerClass *hhc;
@@ -3185,6 +3233,7 @@ static void virt_cpu_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * as in current approach.
      */
     cpu_slot->cpu = NULL;
+    cpu_slot->cpu_hidden = true;
     cs->disabled = true;
 
     return;

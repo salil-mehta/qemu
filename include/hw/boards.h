@@ -103,6 +103,7 @@ MemoryRegion *machine_consume_memdev(MachineState *machine,
  * CPUArchId:
  * @arch_id - architecture-dependent CPU ID of present or possible CPU
  * @cpu - pointer to corresponding CPU object if it's present on NULL otherwise
+ * @cpu_hidden - CPU might be present/plugged-in but not available/hidden
  * @type - QOM class name of possible @cpu object
  * @props - CPU object properties, initialized by board
  * #vcpus_count - number of threads provided by @cpu object
@@ -112,6 +113,7 @@ typedef struct CPUArchId {
     int64_t vcpus_count;
     CpuInstanceProperties props;
     Object *cpu;
+    bool cpu_hidden;
     const char *type;
 } CPUArchId;
 

@@ -727,12 +727,13 @@ build_madt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
 
     for (i = 0; i < MACHINE(vms)->smp.max_cpus; i++) {
         ARMCPU *armcpu = ARM_CPU(qemu_get_possible_cpu(i));
+        bool gicc_enabled = armcpu && !CPU(DEVICE(armcpu))->disabled;
         uint64_t physical_base_address = 0, gich = 0, gicv = 0;
         uint32_t vgic_interrupt = vms->virt ? PPI(ARCH_GIC_MAINT_IRQ) : 0;
         uint32_t pmu_interrupt = (armcpu && arm_feature(&armcpu->env,
                                   ARM_FEATURE_PMU)) || vms->pmu ?
                                   PPI(VIRTUAL_PMU_IRQ) : 0;
-        uint32_t flags = armcpu ? 1 : (1 << 3); /* enabled/online-capable */
+        uint32_t flags = gicc_enabled? 1 : (1 << 3); /* enabled/online-capable */
         uint64_t mpidr = qemu_get_cpu_archid(i);
 
         if (vms->gic_version == VIRT_GIC_VERSION_2) {

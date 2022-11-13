@@ -673,6 +673,7 @@ HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
 
     for (i = 0; i < machine->possible_cpus->len; i++) {
         Object *cpu;
+        bool cpu_hidden;
         HotpluggableCPU *cpu_item = g_new0(typeof(*cpu_item), 1);
 
         cpu_item->type = g_strdup(machine->possible_cpus->cpus[i].type);
@@ -681,7 +682,9 @@ HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
                                    sizeof(*cpu_item->props));
 
         cpu = machine->possible_cpus->cpus[i].cpu;
-        if (cpu) {
+        cpu_hidden = (machine->possible_cpus->cpus[i].cpu_hidden;
+        /* RFC: Question: need to fix this for hotpluggable cpus */
+        if (cpu && !cpu_hidden) {
             cpu_item->has_qom_path = true;
             cpu_item->qom_path = object_get_canonical_path(cpu);
         }

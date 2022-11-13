@@ -229,6 +229,23 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
     return false;
 }
 
+DeviceState *qdev_check_hidden_device(const QDict *opts, Error **errp)
+{
+    ERRP_GUARD();
+    DeviceListener *listener;
+    DeviceState *dev;
+
+    QTAILQ_FOREACH(listener, &device_listeners, link) {
+        if (listener->check_hidden_device) {
+            dev = listener->check_hidden_device(listener, opts, errp);
+            if (dev)
+                return dev;
+        }
+    }
+
+    return NULL;
+}
+
 void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
                                  int required_for_version)
 {

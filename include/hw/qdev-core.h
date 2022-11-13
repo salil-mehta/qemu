@@ -210,6 +210,8 @@ struct DeviceListener {
      */
     bool (*hide_device)(DeviceListener *listener, const QDict *device_opts,
                         bool from_json, Error **errp);
+    DeviceState *(*check_hidden_device)(DeviceListener *listener,
+                                        const QDict *device_opts, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -889,6 +891,20 @@ void device_listener_unregister(DeviceListener *listener);
  * and return if the device should be added now or not.
  */
 bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
+
+/**
+ * @qdev_check_hidden_device:
+ * @opts: options QDict
+ * @errp: pointer to error object. This function should never fail and hence
+ *        this pointer should never get set.
+ *
+ * Check if a device already exists and is hidden for some reason. Is it does
+ * the it will return the existing device otherwise it will return NULL. No
+ * new allocations should happen behind this function.
+ * When a device is added via qdev_device_add() this will be called.
+ *
+ */
+DeviceState *qdev_check_hidden_device(const QDict *opts, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

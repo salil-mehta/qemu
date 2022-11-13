@@ -673,8 +673,15 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
         return NULL;
     }
 
-    /* create device */
-    dev = qdev_new(driver);
+    dev = qdev_check_hidden_device(opts, errp);
+    if (*errp) {
+        error_setg(errp, "checking hidden device should have never failed",
+                   driver);
+        return NULL;
+    } else if (!dev) {
+        /* create device */
+        dev = qdev_new(driver);
+    }
 
     /* Check whether the hotplug is allowed by the machine */
     if (phase_check(PHASE_MACHINE_READY)) {
