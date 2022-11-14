@@ -185,6 +185,7 @@ struct DeviceState {
     QDict *opts;
     int hotplugged;
     bool allow_unplug_during_migration;
+    bool always_present;
     BusState *parent_bus;
     QLIST_HEAD(, NamedGPIOList) gpios;
     QLIST_HEAD(, NamedClockList) clocks;

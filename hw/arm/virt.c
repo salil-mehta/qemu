@@ -3112,6 +3112,14 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     if (dev->hotplugged) {
         virt_update_gic(vms, cs);
     }
+
+    /*
+     * As of now on ARM platforms, CPU devices at VMM are always exposed as
+     * present by ACPI to the guest kernel. We may choose to reflect this in
+     * the QoM as well or we could actually fake this to the guest.
+     * RFC: Question: Need more discussion on this?
+     */
+    dev->always_present = true;
 }
 
 static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
@@ -3232,7 +3240,8 @@ static void virt_cpu_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * This will not be required if the disabled cpus objects are not released
      * as in current approach.
      */
-    cpu_slot->cpu = NULL;
+    if (!dev->always_present)
+        cpu_slot->cpu = NULL;
     cpu_slot->cpu_hidden = true;
     cs->disabled = true;
 
