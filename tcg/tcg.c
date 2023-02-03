@@ -810,6 +810,39 @@ void tcg_register_thread(void)
 
     tcg_ctx = s;
 }
+
+static void tcg_free_plugin_context(TCGContext *s)
+{
+#ifdef CONFIG_PLUGIN
+    unsigned i;
+
+    if (s->plugin_tb) {
+        for (i = 0; i < s->plugin_tb->insns->len; i++) {
+            g_free(g_ptr_array_index(s->plugin_tb->insns, i));
+        }
+        g_ptr_array_free(s->plugin_tb->insns, TRUE);
+
+        if (!s->plugin_tb->insns) {
+            g_free(s->plugin_tb);
+        }
+    }
+#endif
+}
+
+void tcg_unregister_thread(void)
+{
+    TCGContext *s = tcg_ctx;
+    unsigned int n;
+
+    /* unclaim an entry in tcg_ctxs */
+    n = qatomic_fetch_dec(&tcg_cur_ctxs);
+    g_assert(n > 1);
+    qatomic_store_release(&tcg_ctxs[n - 1], 0);
+
+    tcg_free_plugin_context(s);
+
+    g_free(s);
+}
 #endif /* !CONFIG_USER_ONLY */
 
 /* pool based memory allocation */

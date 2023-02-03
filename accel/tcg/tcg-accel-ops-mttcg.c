@@ -122,6 +122,7 @@ static void *mttcg_cpu_thread_fn(void *arg)
     bql_unlock();
     rcu_remove_force_rcu_notifier(&force_rcu.notifier);
     rcu_unregister_thread();
+    tcg_unregister_thread();
     return NULL;
 }
 
