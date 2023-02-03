@@ -52,6 +52,13 @@ void tcg_register_thread(CPUState *cpu);
 #endif
 
 /**
+ * tcg_unregister_thread: Unregister this thread with the TCG runtime
+ *
+ * This leg shall be called whenever TCG vCPU is hot-unplugged
+ */
+void tcg_unregister_thread(void);
+
+/**
  * tcg_prologue_init(): Generate the code for the TCG prologue
  *
  * In softmmu this is done automatically as part of the TCG
