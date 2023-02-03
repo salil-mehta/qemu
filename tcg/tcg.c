@@ -761,6 +761,18 @@ QEMU_BUILD_BUG_ON((int)(offsetof(CPUNegativeOffsetState, tlb.f[0]) -
                   < MIN_TLB_MASK_TABLE_OFS);
 #endif
 
+static void free_tcg_plugin_context(TCGContext *s)
+{
+#ifdef CONFIG_PLUGIN
+    if (s->plugin_tb) {
+        g_ptr_array_unref(s->plugin_tb->insns);
+        if (!s->plugin_tb->insns) {
+            g_free(s->plugin_tb);
+        }
+    }
+#endif
+}
+
 /*
  * All TCG threads except the parent (i.e. the one that called tcg_context_init
  * and registered the target's TCG globals) must register with this function
@@ -809,6 +821,21 @@ void tcg_register_thread(void)
     }
 
     tcg_ctx = s;
+}
+
+void tcg_unregister_thread(void)
+{
+    TCGContext *s = tcg_ctx;
+    unsigned int n;
+
+    /* Unclaim an entry in tcg_ctxs */
+    n = qatomic_fetch_dec(&tcg_cur_ctxs);
+    g_assert(n > 1);
+    qatomic_store_release(&tcg_ctxs[n - 1], 0);
+
+    free_tcg_plugin_context(s);
+
+    g_free(s);
 }
 #endif /* !CONFIG_USER_ONLY */
 
