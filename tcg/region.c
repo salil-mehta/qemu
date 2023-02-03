@@ -364,6 +364,19 @@ bool tcg_region_alloc(TCGContext *s)
 }
 
 /*
+ * Deallocate current region and update agg_size_full.
+ */
+void tcg_region_dealloc(TCGContext *s)
+{
+    size_t size_full = s->code_gen_buffer_size;
+
+    qemu_mutex_lock(&region.lock);
+    region.current--;
+    region.agg_size_full -= size_full - TCG_HIGHWATER;
+    qemu_mutex_unlock(&region.lock);
+}
+
+/*
  * Perform a context's first region allocation.
  * This function does _not_ increment region.agg_size_full.
  */
