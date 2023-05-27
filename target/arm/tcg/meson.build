@@ -83,7 +83,9 @@ arm_common_system_ss.add(files(
   'cpregs-at.c',
   'cpu32-system.c',
   'gicv5-cpuif.c',
-  'psci.c',
+  'debug.c',
+  'hflags.c',
+  'neon_helper.c',
   'tlb_helper.c',
   'tlb-insns.c',
 ))
