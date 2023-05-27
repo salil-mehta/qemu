@@ -88,7 +88,6 @@ arm_common_system_ss.add(files(
   'cpu32.c',
   'cpregs-at.c',
   'gicv5-cpuif.c',
-  'psci.c',
   'tlb_helper.c',
   'tlb-insns.c',
 ))
