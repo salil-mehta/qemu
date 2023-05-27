@@ -17,6 +17,7 @@
 #include "qemu/main-loop.h"
 #include "sysemu/tcg.h"
 #include "target/arm/multiprocessing.h"
+#include "hw/boards.h"
 
 #ifndef DEBUG_ARM_POWERCTL
 #define DEBUG_ARM_POWERCTL 0
@@ -31,14 +32,14 @@
 
 CPUState *arm_get_cpu_by_id(uint64_t id)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     CPUState *cpu;
 
     DPRINTF("cpu %" PRId64 "\n", id);
 
-    CPU_FOREACH(cpu) {
-        ARMCPU *armcpu = ARM_CPU(cpu);
-
-        if (arm_cpu_mp_affinity(armcpu) == id) {
+    /* with vCPU hotplug support, we must now check for all possible vCPUs */
+    CPU_FOREACH_POSSIBLE(cpu, ms->possible_cpus) {
+        if (cpu && (arm_cpu_mp_affinity(ARM_CPU(cpu)) == id)) {
             return cpu;
         }
     }
@@ -119,9 +120,16 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
 
     /* Retrieve the cpu we are powering up */
     target_cpu_state = arm_get_cpu_by_id(cpuid);
+
     if (!target_cpu_state) {
-        /* The cpu was not found */
-        return QEMU_ARM_POWERCTL_INVALID_PARAM;
+        /*
+         * The cpu is not plugged in or disabled. We should return appropriate
+         * value as introduced in DEN0022E PSCI 1.2 issue E
+         */
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "[ARM]%s: Denying attempt to online removed/disabled "
+                      "CPU%" PRId64"\n", __func__, cpuid);
+        return QEMU_ARM_POWERCTL_IS_OFF;
     }
 
     target_cpu = ARM_CPU(target_cpu_state);
