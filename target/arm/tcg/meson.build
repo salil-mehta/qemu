@@ -64,7 +64,6 @@ arm_common_system_ss.add(files(
   'debug.c',
   'hflags.c',
   'neon_helper.c',
-  'psci.c',
   'tlb_helper.c',
   'tlb-insns.c',
   'vec_helper.c',

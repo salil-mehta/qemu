@@ -192,6 +192,15 @@ bool kvm_arm_mte_supported(void);
  * Returns true if KVM can enable EL2 and false otherwise.
  */
 bool kvm_arm_el2_supported(void);
+
+/**
+ * kvm_arm_set_smccc_filter
+ * @func: funcion
+ * @faction: SMCCC filter action(handle, deny, fwd-to-user) to be deployed
+ *
+ * Sets the ARMs SMC-CC filter in KVM Host for selective hypercall exits
+ */
+int kvm_arm_set_smccc_filter(uint64_t func, uint8_t faction);
 #else
 
 static inline bool kvm_arm_aarch32_supported(void)
@@ -207,6 +216,11 @@ static inline bool kvm_arm_mte_supported(void)
 static inline bool kvm_arm_el2_supported(void)
 {
     return false;
+}
+
+static inline int kvm_arm_set_smccc_filter(uint64_t func, uint8_t faction)
+{
+    g_assert_not_reached();
 }
 #endif
 
