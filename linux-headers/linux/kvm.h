@@ -343,6 +343,7 @@ struct kvm_run {
 			__u64 ret;
 			__u32 longmode;
 			__u32 pad;
+			__u32 flags;
 		} hypercall;
 		/* KVM_EXIT_TPR_ACCESS */
 		struct {
