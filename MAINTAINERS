@@ -493,6 +493,7 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Supported
 F: target/arm/kvm.c
+F: target/arm/psci.c
 F: tests/functional/aarch64/test_kvm.py
 
 PPC KVM CPUs
