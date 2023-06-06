@@ -414,7 +414,22 @@ struct CPUState {
     SavedIOTLB saved_iotlb;
 #endif
 
+    /* Some architectures do not allow *presence* of vCPUs to be changed
+     * after guest has booted using information specified by VMM/firmware
+     * via ACPI MADT at the boot time. But the vCPU Hotplug functionality
+     * still makes sense as a use-case even on these architectures.
+     * Hence, we can have disabled CPUState or can also not have CPUState
+     * object at all. Depending upon the architecture, this is possible
+     * when vCPU Hotplug is supported and vCPUs are 'yet-to-be-plugged'
+     * in the QoM or have been hot-unplugged. In such cases, to give
+     * persistent view of the presence of vCPUs to the guest, ACPI might
+     * need to fake the presence of the vCPUs (but keep them disabled)
+     * to the guest. This is done by returning _STA.PRES=True and
+     * _STA.Ena=False for the unplugged vCPUs in Qemu/QoM.
+     */
     bool disabled;
+    bool acpi_persistent;
+
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
     int cluster_index;
@@ -801,6 +816,16 @@ bool qemu_present_cpu(CPUState *cpu);
  * Returns: True if it is 'enabled' else false
  */
 bool qemu_enabled_cpu(CPUState *cpu);
+
+/**
+ * qemu_persistent_cpu:
+ * @cpu: The vCPU to check
+ *
+ * Checks if the vcpu state is always reflected as ACPI present
+ *
+ * Returns: True if it is 'enabled' else false
+ */
+bool qemu_persistent_cpu(CPUState *cpu);
 
 /**
  * qemu_get_cpu_archid:
