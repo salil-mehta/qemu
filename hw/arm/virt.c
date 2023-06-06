@@ -3196,7 +3196,13 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     cpu_slot = virt_find_cpu_slot(ms, cs->cpu_index);
     cpu_slot->cpu = OBJECT(dev);
 
-    if (dev->hotplugged) {
+    /*
+     * notify guest about the new vcpu (using ACPI/GED device-check notfication)
+     * if vcpu is being hotplugged or when a cold-plugged vcpu is added using
+     * -device option at bootime. Retaining superfluous 'hotplugged' check for
+     * clarity
+     */
+    if (dev->hotplugged || dev->acpi_dev) {
         HotplugHandlerClass *hhc;
 
         wire_gic_cpu_irqs(vms, cs);
