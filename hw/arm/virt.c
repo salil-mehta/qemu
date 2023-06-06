@@ -3119,7 +3119,12 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     cpu_slot = virt_find_cpu_slot(ms, cs->cpu_index);
     cpu_slot->cpu = OBJECT(dev);
 
-    if (dev->hotplugged) {
+    /* 
+     * Update the ACPI Hotplug state both for vCPUs being {hot,cold}-plugged.
+     * vCPUs can be cold-plugged using '-device' option. For vCPUs being hot
+     * plugged, guest is also notified.
+     */
+    if (dev->hotplugged || vms->acpi_dev) {
         /* TODO: wire the gic-cpu irqs */
         /* TODO: update acpi hotplug state and send cpu hotplug event to guest */
         /* TODO: register this cpu for reset & update F/W info for the next boot */
