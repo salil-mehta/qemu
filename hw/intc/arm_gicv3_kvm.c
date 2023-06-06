@@ -467,7 +467,7 @@ static void kvm_arm_gicv3_put(GICv3State *s)
          * all of the cases we want to make sure we dont acess the GICC for
          * the disabled VCPUs.
          */
-        if (!qemu_present_cpu(c->cpu))
+        if (!qemu_enabled_cpu(c->cpu))
             continue;
 
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, true);
@@ -627,6 +627,10 @@ static void kvm_arm_gicv3_get(GICv3State *s)
     for (ncpu = 0; ncpu < s->num_cpu; ncpu++) {
         GICv3CPUState *c = &s->cpu[ncpu];
         int num_pri_bits;
+
+        /* dont acess the GICC for the disabled VCPUs. */
+        if (!qemu_enabled_cpu(c->cpu))
+            continue;
 
         kvm_gicc_access(s, ICC_SRE_EL1, ncpu, &c->icc_sre_el1, false);
         kvm_gicc_access(s, ICC_CTLR_EL1, ncpu,
@@ -834,7 +838,7 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
 
     for (i = 0; i < s->num_cpu; i++) {
         CPUState *cs = qemu_get_cpu(i);
-        if (qemu_present_cpu(cs))
+        if (qemu_enabled_cpu(cs))
             kvm_gicv3_init_cpu_reginfo(cs);
     }
 

@@ -883,7 +883,7 @@ int kvm_arch_init_vcpu(CPUState *cs)
         return -EINVAL;
     }
 
-    if (qemu_present_cpu(cs))
+    if (qemu_enabled_cpu(cs))
         cs->vmcse = qemu_add_vm_change_state_handler(kvm_arm_vm_state_change,
                                                      cs);
 
@@ -962,7 +962,7 @@ int kvm_arch_init_vcpu(CPUState *cs)
 
 int kvm_arch_destroy_vcpu(CPUState *cs)
 {
-    if (qemu_present_cpu(cs))
+    if (qemu_enabled_cpu(cs))
         qemu_del_vm_change_state_handler(cs->vmcse);
 
     return 0;
