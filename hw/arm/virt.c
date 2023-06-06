@@ -3214,13 +3214,14 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
         if (local_err)
             goto fail;
 
-        /* register this cpu for reset & update F/W info for the next boot */
+        /* register this cpu for reset */
         qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
-        vms->boot_cpus++;
-        if (vms->fw_cfg) {
-            fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
-        }
     }
+
+    /* update F/W info for the next boot */
+    vms->boot_cpus++;
+    if (vms->fw_cfg)
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
 
     cs->disabled = false;
     return;
