@@ -2387,8 +2387,6 @@ static void machvirt_init(MachineState *machine)
                                 virt_get_thread_id(machine, n), NULL);
 
         if (n < smp_cpus) {
-            char *core_id = g_strdup_printf("core%d", n);
-            qdev_set_id(DEVICE(cpuobj), core_id, &error_fatal);
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
             object_unref(cpuobj);
         } else {
