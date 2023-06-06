@@ -2452,6 +2452,17 @@ static void machvirt_init(MachineState *machine)
 
     create_gic(vms, sysmem);
 
+    /* hotplug related state must be initalized before virt_cpu_post_init() */
+    if (has_ged && aarch64 && firmware_loaded && virt_is_acpi_enabled(vms)) {
+        vms->acpi_dev = create_acpi_ged(vms);
+    } else {
+        create_gpio_devices(vms, VIRT_GPIO, sysmem);
+    }
+
+    if (vms->secure && !vmc->no_secure_gpio) {
+        create_gpio_devices(vms, VIRT_SECURE_GPIO, secure_sysmem);
+    }
+
     virt_cpu_post_init(vms, sysmem);
 
     fdt_add_pmu_nodes(vms);
@@ -2473,16 +2484,6 @@ static void machvirt_init(MachineState *machine)
     create_rtc(vms);
 
     create_pcie(vms);
-
-    if (has_ged && aarch64 && firmware_loaded && virt_is_acpi_enabled(vms)) {
-        vms->acpi_dev = create_acpi_ged(vms);
-    } else {
-        create_gpio_devices(vms, VIRT_GPIO, sysmem);
-    }
-
-    if (vms->secure && !vmc->no_secure_gpio) {
-        create_gpio_devices(vms, VIRT_SECURE_GPIO, secure_sysmem);
-    }
 
      /* connect powerdown request */
      vms->powerdown_notifier.notify = virt_powerdown_req;
