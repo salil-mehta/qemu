@@ -291,6 +291,11 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
         error_report("Failed to install PSCI-to-user-space forward filter");
         abort();
     }
+    if (kvm_arm_set_smccc_filter(PSCI_0_2_FN_CPU_OFF,
+                                 KVM_SMCCC_FILTER_FWD_TO_USER)) {
+        error_report("Failed to install cpu-off PSCI-to-user-space forward filter");
+        abort();
+    }
 
     kvm_arm_init_debug(s);
 
