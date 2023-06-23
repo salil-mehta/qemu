@@ -196,7 +196,7 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
     }
 
     target_cpu_state = CPU(arch_id->cpu);
-    if (!target_cpu_state || target_cpu_state->disabled) {
+    if (!qemu_enabled_cpu(target_cpu_state)) {
         /*
          * The cpu is not plugged in or disabled. We should return appropriate
          * value as introduced in DEN0022E PSCI 1.2 issue E
