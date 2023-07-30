@@ -2962,7 +2962,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
         return;
     }
 
-    if ((cpu->core_id < 0) || (cpu->core_id >= ms->possible_cpus->len)) {
+    if ((cpu->core_id < 0) || (cpu->core_id >= ms->smp.cpus)) {
         error_setg(errp, "Invalid core-id %u specified, must be in range 1:%u",
                    cpu->core_id, ms->possible_cpus->len - 1);
         return;
