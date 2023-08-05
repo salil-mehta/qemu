@@ -359,7 +359,7 @@ static void arm_gicv3_cpu_update_notifier(Notifier * notifier, void * data)
     }
 
     /* check if update is for vcpu hot-unplug */
-    if (qemu_present_cpu(cpu)) {
+    if (qemu_enabled_cpu(cpu)) {
         s->cpu[gic_cpuif_num].cpu = NULL;
         return;
     }
