@@ -37,6 +37,7 @@ config ARM_VIRT
     select ACPI_CXL
     select ACPI_HMAT
     select WDT_SBSA
+    select ACPI_CPU_HOTPLUG
 
 config CUBIEBOARD
     bool
