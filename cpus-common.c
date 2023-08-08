@@ -128,6 +128,12 @@ bool qemu_enabled_cpu(CPUState *cpu)
     return cpu && !cpu->disabled;
 }
 
+bool qemu_persistent_cpu(CPUState *cpu)
+{
+    /* cpu state can be faked to the guest via acpi */
+    return cpu->acpi_persistent;
+}
+
 uint64_t qemu_get_cpu_archid(int cpu_index)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
