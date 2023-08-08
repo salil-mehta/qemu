@@ -552,6 +552,16 @@ struct CPUState {
      * By default, `CPUState` objects are enabled across all architectures.
      */
     bool disabled;
+    /*
+     * On certain architectures, to provide the guest kernel with a persistent
+     * view of vCPU presence, even when the QOM might not have a corresponding
+     * vCPU object, ACPI may need to simulate the presence of vCPUs while
+     * keeping them ACPI-disabled for the guest. This is achieved by returning
+     * `_STA.PRES=True` and `_STA.Ena=False` for unplugged vCPUs in QEMU's QOM.
+     * By default, this flag is set to FALSE and must be explicitly set to TRUE
+     * on architectures like ARM.
+     */
+    bool acpi_persistent;
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
