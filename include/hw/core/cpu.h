@@ -551,6 +551,13 @@ struct CPUState {
      * By default every CPUState is enabled as of now across all archs.
      */
     bool disabled;
+    /*
+     * On certain architectures, to give persistent view of the 'presence' of
+     * vCPUs to the guest, ACPI might need to fake the 'presence' of the vCPUs
+     * but keep them ACPI disabled to the guest. This is done by returning
+     * _STA.PRES=True and _STA.Ena=False for the unplugged vCPUs in QEMU QoM.
+     */
+    bool acpi_persistent;
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
@@ -971,6 +978,19 @@ bool qemu_present_cpu(CPUState *cpu);
  * Returns: True if it is 'enabled' else false
  */
 bool qemu_enabled_cpu(CPUState *cpu);
+
+/**
+ * qemu_persistent_cpu:
+ * @cpu: The vCPU to check
+ *
+ * Checks if the vCPU state should always be reflected as *present* via ACPI
+ * to the Guest. By default, this is False on all architectures and has to be
+ * explicity set during initialization.
+ *
+ * Returns: True if it is ACPI 'persistent' CPU
+ *
+ */
+bool qemu_persistent_cpu(CPUState *cpu);
 
 /**
  * qemu_get_cpu_archid:
