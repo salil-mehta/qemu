@@ -3060,7 +3060,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
 
     if ((cpu->thread_id < 0) || (cpu->thread_id >= ms->smp.threads)) {
-        error_setg(errp, "Invalid thread-id %u specified, must be in range 1:%u",
+        error_setg(errp, "Invalid thread-id %u specified, must be in range 0:%u",
                    cpu->thread_id, ms->smp.threads - 1);
         return;
     }
@@ -3078,13 +3078,13 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
 
     if ((cpu->cluster_id < 0) || (cpu->cluster_id >= ms->smp.clusters)) {
-        error_setg(errp, "Invalid cluster-id %u specified, must be in range 1:%u",
+        error_setg(errp, "Invalid cluster-id %u specified, must be in range 0:%u",
                    cpu->cluster_id, ms->smp.clusters - 1);
         return;
     }
 
     if ((cpu->socket_id < 0) || (cpu->socket_id >= ms->smp.sockets)) {
-        error_setg(errp, "Invalid socket-id %u specified, must be in range 1:%u",
+        error_setg(errp, "Invalid socket-id %u specified, must be in range 0:%u",
                    cpu->socket_id, ms->smp.sockets - 1);
         return;
     }
