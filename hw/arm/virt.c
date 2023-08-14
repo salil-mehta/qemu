@@ -3148,10 +3148,11 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
 
         /* register this cpu for reset & update F/W info for the next boot */
         qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
-        vms->boot_cpus++;
-        if (vms->fw_cfg) {
-            fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
-        }
+    }
+
+    vms->boot_cpus++;
+    if (vms->fw_cfg) {
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
     }
 
     cs->disabled = false;
