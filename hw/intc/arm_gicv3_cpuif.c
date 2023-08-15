@@ -30,11 +30,6 @@
  */
 #define HPPVI_INDEX_VLPI 16
 
-void gicv3_set_cpustate(GICv3CPUState *s, CPUState *cpu)
-{
-    s->cpu = cpu;
-}
-
 static GICv3CPUState *icc_cs_from_env(CPUARMState *env)
 {
     return env->gicv3state;
