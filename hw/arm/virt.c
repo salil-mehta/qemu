@@ -2074,6 +2074,27 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
                 kvm_arm_pvtime_init(cpu, pvtime_reg_base +
                                          cpu->cpu_index * PVTIME_SIZE_PER_CPU);
             }
+        }
+    } else {
+        /* keep it disabled for all the vcpus */
+        vms->pmu = false;
+
+        if (aarch64 && vms->highmem) {
+            int requested_pa_size = 64 - clz64(vms->highest_gpa);
+            int pamax = arm_pamax(ARM_CPU(first_cpu));
+
+            if (pamax < requested_pa_size) {
+                error_report("VCPU supports less PA bits (%d) than "
+                             "requested by the memory map (%d)",
+                             pamax, requested_pa_size);
+                exit(1);
+            }
+        }
+    }
+
+    if (kvm_enabled() || tcg_enabled()) {
+        for (n = 0; n < possible_cpus->len; n++) {
+            cpu = qemu_get_possible_cpu(n);
 
             /*
              * Now, GIC has been sized with possible cpus and we dont require
@@ -2098,21 +2119,6 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
                 cpu_slot = virt_find_cpu_slot(ms, cpu->cpu_index);
                 cpu_slot->cpu = NULL;
                 object_unref(OBJECT(cpu));
-            }
-        }
-    } else {
-        /* keep it disabled for all the vcpus */
-        vms->pmu = false;
-
-        if (aarch64 && vms->highmem) {
-            int requested_pa_size = 64 - clz64(vms->highest_gpa);
-            int pamax = arm_pamax(ARM_CPU(first_cpu));
-
-            if (pamax < requested_pa_size) {
-                error_report("VCPU supports less PA bits (%d) than "
-                             "requested by the memory map (%d)",
-                             pamax, requested_pa_size);
-                exit(1);
             }
         }
     }
