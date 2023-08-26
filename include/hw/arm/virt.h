@@ -143,6 +143,10 @@ struct VirtMachineState {
     DeviceState *platform_bus_dev;
     FWCfgState *fw_cfg;
     PFlashCFI01 *flash[2];
+    MemoryRegion *sysmem;
+    MemoryRegion *secure_sysmem;
+    MemoryRegion *tag_sysmem;
+    MemoryRegion *secure_tag_sysmem;
     bool secure;
     bool highmem;
     bool highmem_compact;
@@ -250,4 +254,12 @@ static inline int virt_get_thread_id(int cpu_index)
     return ms->possible_cpus->cpus[cpu_index].props.thread_id;
 }
 
+static inline CPUArchId *virt_get_possible_cpu_arch_id(int cpu_index)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+
+    assert(cpu_index >= 0 && cpu_index < ms->possible_cpus->len);
+
+    return &ms->possible_cpus->cpus[cpu_index];
+}
 #endif /* QEMU_ARM_VIRT_H */
