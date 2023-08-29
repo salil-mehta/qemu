@@ -3087,16 +3087,11 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
 
     max_cpuid = ms->possible_cpus->len - 1;
-
-    /*  TBD: Intentionally Disabled to avoid compilation break. Will be enabled
-     *       in subsequent patches:
-     *
-     *  if (!dev->hotplugged) {
-     *    bool booted_with_id = (vms->boot_cpus >= ms->smp.cpus);
-     *    min_cpuid = booted_with_id ? ms->smp.cpus : 0;
-     *    max_cpuid = booted_with_id ? max_cpuid : ms->smp.cpus - 1;
-     *  }
-     */
+    if (!dev->hotplugged) {
+        bool booted_with_id = (vms->boot_cpus >= ms->smp.cpus);
+        min_cpuid = booted_with_id ? ms->smp.cpus : 0;
+        max_cpuid = booted_with_id ? max_cpuid : ms->smp.cpus - 1;
+    }
     if ((cpu->core_id < min_cpuid) || (cpu->core_id > max_cpuid)) {
         error_setg(errp, "Invalid core-id %d specified, must be in range %d:%d",
                    cpu->core_id, min_cpuid, max_cpuid);
