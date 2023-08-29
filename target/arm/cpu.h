@@ -859,6 +859,8 @@ struct ArchCPU {
     CPUNegativeOffsetState neg;
     CPUARMState env;
 
+    DeviceState *gics; /* GICV3State */
+
     /* Coprocessor information */
     GHashTable *cp_regs;
     /* For marshalling (mostly coprocessor) register state between the

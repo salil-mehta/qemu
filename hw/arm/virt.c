@@ -3050,6 +3050,11 @@ static void virt_memory_plug(HotplugHandler *hotplug_dev,
 
 static void virt_update_gic(VirtMachineState *vms, CPUState *cs)
 {
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    /* pass the original GICV3State along with CPU */
+    cpu->gcs = vms->gic;
+
     /* notify gic to stitch GICC to this new cpu */
     notifier_list_notify(&vms->cpuhp_notifiers, cs);
 }
