@@ -2400,6 +2400,12 @@ static void machvirt_init(MachineState *machine)
 
     create_gic(vms, sysmem);
 
+    has_ged = has_ged && aarch64 && firmware_loaded &&
+              virt_is_acpi_enabled(vms);
+    if (has_ged) {
+        vms->acpi_dev = create_acpi_ged(vms);
+    }
+
     virt_cpu_post_init(vms, sysmem);
 
     fdt_add_pmu_nodes(vms);
@@ -2422,9 +2428,7 @@ static void machvirt_init(MachineState *machine)
 
     create_pcie(vms);
 
-    if (has_ged && aarch64 && firmware_loaded && virt_is_acpi_enabled(vms)) {
-        vms->acpi_dev = create_acpi_ged(vms);
-    } else {
+    if (!has_ged) {
         create_gpio_devices(vms, VIRT_GPIO, sysmem);
     }
 
