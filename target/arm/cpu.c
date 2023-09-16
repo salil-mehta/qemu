@@ -2270,12 +2270,23 @@ static void arm_cpu_unrealizefn(DeviceState *dev)
     ARMCPU *cpu = ARM_CPU(dev);
     CPUARMState *env = &cpu->env;
     CPUState *cs = CPU(dev);
+    bool has_secure;
+
+    has_secure = cpu->has_el3 || arm_feature(env, ARM_FEATURE_M_SECURITY);
 
     /* rock 'n' un-roll, whatever happened in the arm_cpu_realizefn cleanly */
-    if (cpu->has_el3 || arm_feature(env, ARM_FEATURE_M_SECURITY)) {
+    cpu_address_space_destroy(cs, ARMASIdx_NS);
+
+    if (cpu->tag_memory != NULL) {
+        cpu_address_space_destroy(cs, ARMASIdx_TagNS);
+        if (has_secure) {
+            cpu_address_space_destroy(cs, ARMASIdx_TagS);
+        }
+    }
+
+    if (has_secure) {
         cpu_address_space_destroy(cs, ARMASIdx_S);
     }
-    cpu_address_space_destroy(cs, ARMASIdx_NS);
 
     destroy_cpreg_list(cpu);
     arm_cpu_unregister_gdb_regs(cpu);
@@ -2300,6 +2311,10 @@ static void arm_cpu_unrealizefn(DeviceState *dev)
             g_free(env->pmsav7.drbar);
             g_free(env->pmsav7.drsr);
             g_free(env->pmsav7.dracr);
+        }
+        if (cpu->pmsav8r_hdregion) {
+            g_free(env->pmsav8.hprbar);
+            g_free(env->pmsav8.hprlar);
         }
     }
 
