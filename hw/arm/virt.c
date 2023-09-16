@@ -668,6 +668,16 @@ static inline DeviceState *create_acpi_ged(VirtMachineState *vms)
     return dev;
 }
 
+static void virt_add_gic_cpuhp_notifier(VirtMachineState *vms)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(vms);
+
+    if (mc->has_hotpluggable_cpus) {
+        Notifier *cpuhp_notifier = gicv3_cpuhp_notifier(vms->gic);
+        notifier_list_add(&vms->cpuhp_notifiers, cpuhp_notifier);
+    }
+}
+
 static void create_its(VirtMachineState *vms)
 {
     const char *itsclass = its_class_name();
@@ -914,6 +924,9 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     } else if (vms->gic_version == VIRT_GIC_VERSION_2) {
         create_v2m(vms);
     }
+
+    /* add GIC CPU hot(un)plug update notifier */
+    virt_add_gic_cpuhp_notifier(vms);
 }
 
 static void create_uart(const VirtMachineState *vms, int uart,
@@ -3047,8 +3060,10 @@ static void virt_memory_plug(HotplugHandler *hotplug_dev,
 
 static void virt_update_gic(VirtMachineState *vms, CPUState *cs)
 {
+    GICv3CPUHotplugInfo gic_info = { .gic = vms->gic, .cpu = cs };
+
     /* notify gic to stitch GICC to this new cpu */
-    notifier_list_notify(&vms->cpuhp_notifiers, cs);
+    notifier_list_notify(&vms->cpuhp_notifiers, &gic_info);
 }
 
 static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,

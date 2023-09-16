@@ -32,8 +32,6 @@
 #include "gicv3_internal.h"
 #include "hw/arm/linux-boot-if.h"
 #include "sysemu/kvm.h"
-#include "hw/arm/virt.h"
-
 
 static void gicv3_gicd_no_migration_shift_bug_post_load(GICv3State *cs)
 {
@@ -345,11 +343,14 @@ static int arm_gicv3_get_proc_num(GICv3State *s, CPUState *cpu)
 
 static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
 {
-    VirtMachineState *vms = VIRT_MACHINE(qdev_get_machine());
-    GICv3State *s = ARM_GICV3_COMMON(vms->gic);
-    ARMGICv3CommonClass *c = ARM_GICV3_COMMON_GET_CLASS(s);
-    CPUState *cpu = CPU(data);
+    GICv3CPUHotplugInfo *gic_info = (GICv3CPUHotplugInfo *)data;
+    CPUState *cpu = gic_info->cpu;
+    ARMGICv3CommonClass *c;
     int gic_cpuif_num;
+    GICv3State *s;
+
+    s = ARM_GICV3_COMMON(gic_info->gic);
+    c = ARM_GICV3_COMMON_GET_CLASS(s);
 
     /* this shall get us mapped gicv3 cpuif corresponding to mpidr */
     gic_cpuif_num = arm_gicv3_get_proc_num(s, cpu);
@@ -377,7 +378,6 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
 
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 {
-    VirtMachineState *vms = VIRT_MACHINE(qdev_get_machine());
     GICv3State *s = ARM_GICV3_COMMON(dev);
     int i, rdist_capacity, cpuidx;
 
@@ -499,7 +499,6 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
     }
 
     s->cpu_update_notifier.notify = arm_gicv3_cpu_update_notifier;
-    notifier_list_add(&vms->cpuhp_notifiers, &s->cpu_update_notifier);
 
     s->itslist = g_ptr_array_new();
 }
