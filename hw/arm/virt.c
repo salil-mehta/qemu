@@ -2264,6 +2264,17 @@ static void machvirt_init(MachineState *machine)
         exit(1);
     }
 
+    /* We can probe only here because during property set
+     * KVM is not available yet
+     */
+    finalize_gic_version(vms);
+    if (tcg_enabled() || hvf_enabled() || qtest_enabled() ||
+        (vms->gic_version < VIRT_GIC_VERSION_3)) {
+        machine->smp.max_cpus = smp_cpus;
+        mc->has_hotpluggable_cpus = false;
+        warn_report("cpu hotplug feature has been disabled");
+    }
+
     possible_cpus = mc->possible_cpu_arch_ids(machine);
 
     /*
@@ -2289,11 +2300,6 @@ static void machvirt_init(MachineState *machine)
 
         virt_set_memmap(vms, pa_bits);
     }
-
-    /* We can probe only here because during property set
-     * KVM is not available yet
-     */
-    finalize_gic_version(vms);
 
     sysmem = vms->sysmem = get_system_memory();
 
@@ -2361,16 +2367,6 @@ static void machvirt_init(MachineState *machine)
                      "Security extensions (TrustZone) to the guest CPU",
                      current_accel_name());
         exit(1);
-    }
-
-    if (vms->gic_version < VIRT_GIC_VERSION_3 && max_cpus != smp_cpus) {
-        warn_report("For GICv%d max-cpus must be equal to smp-cpus",
-                    vms->gic_version);
-        warn_report("Overriding specified max-cpus(%d) with smp-cpus(%d)",
-                     max_cpus, smp_cpus);
-        machine->smp.max_cpus = smp_cpus;
-        mc->has_hotpluggable_cpus = false;
-        warn_report("cpu hotplug feature has been disabled");
     }
 
     if (vms->virt && (kvm_enabled() || hvf_enabled())) {
