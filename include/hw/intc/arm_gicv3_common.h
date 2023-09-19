@@ -348,7 +348,7 @@ typedef struct GICv3CPUHotplugInfo {
  */
 static inline Notifier *gicv3_cpuhp_notifier(DeviceState *dev)
 {
-    GICv3State * s = ARM_GICV3_COMMON(dev);
+    GICv3State *s = ARM_GICV3_COMMON(dev);
     return &s->cpu_update_notifier;
 }
 
