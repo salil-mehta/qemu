@@ -3129,8 +3129,10 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
     virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
 
-    if (dev->hotplugged) {
+    /* fix the GICv3CPUState for this vCPU */
+    if (vms->acpi_dev) {
         virt_update_gic(vms, cs);
+        wire_gic_cpu_irqs(vms, cs);
     }
 
     /*
@@ -3159,10 +3161,8 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * vCPUs can be cold-plugged using '-device' option. For vCPUs being hot
      * plugged, guest is also notified.
      */
-    if (dev->hotplugged || vms->acpi_dev) {
+    if (vms->acpi_dev) {
         HotplugHandlerClass *hhc;
-
-        wire_gic_cpu_irqs(vms, cs);
 
         /* update acpi hotplug state and send cpu hotplug event to guest */
         hhc = HOTPLUG_HANDLER_GET_CLASS(vms->acpi_dev);
