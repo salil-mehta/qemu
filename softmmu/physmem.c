@@ -790,7 +790,7 @@ void cpu_address_space_destroy(CPUState *cpu, int asidx)
     }
 
     address_space_destroy(cpuas->as);
-    g_free(cpuas->as);
+    g_free_rcu(cpuas->as, rcu);
 
     if (cpu->cpu_ases_ref_count == 1) {
         g_free(cpu->cpu_ases);
