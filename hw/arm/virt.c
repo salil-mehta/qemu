@@ -3174,6 +3174,10 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
         virt_update_gic(vms, cs, true);
         wire_gic_cpu_irqs(vms, cs);
     }
+
+    if (!dev->hotplugged) {
+        cs->cold_booted = true;
+    }
 }
 
 static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
@@ -3245,6 +3249,18 @@ static void virt_cpu_unplug_request(HotplugHandler *hotplug_dev,
 
     if (!mc->has_hotpluggable_cpus) {
         error_setg(errp, "CPU hot(un)plug not supported on this machine");
+        return;
+    }
+
+    /*
+     * UEFI ACPI standard change is required to make both 'enabled' and the
+     * 'online-capable' bit co-exist instead of being mutually exclusive.
+     * check virt_acpi_get_gicc_flags() for more details.
+     *
+     * Disable the unplugging of cold-booted vCPUs as a temporary mitigation.
+     */
+    if (cs->cold_booted) {
+        error_setg(errp, "Hot-unplug of cold-booted CPU not supported!");
         return;
     }
 
