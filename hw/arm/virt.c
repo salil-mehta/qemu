@@ -3151,6 +3151,10 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * This shall be used during the init of ACPI Hotplug state and hot-unplug
      */
      cs->acpi_persistent = true;
+
+    if (!dev->hotplugged) {
+        cs->cold_booted = true;
+    }
 }
 
 static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
@@ -3211,6 +3215,23 @@ static void virt_cpu_unplug_request(HotplugHandler *hotplug_dev,
 
     if (!mc->has_hotpluggable_cpus) {
         error_setg(errp, "CPU hot(un)plug not supported on this machine");
+        return;
+    }
+
+    /*
+     * As per below UEFI ACPI standard change only vCPUs associated with MADT
+     * GIC CPU Interface enteries with 'online-capable' bit set are allowed to
+     * be hot(un)pluggable. But setting this bit for cold-{inited,plugged} vCPUs
+     * could break the compatibility with legacy OS as during booted they will
+     * ignore this bit and will expect all MADT GIC CPU interface entries to
+     * be available with 'Enabled' bit set instead. End result would be some
+     * vCPUs might not be visible to OS with no hotplug support. Hence, for now
+     * disabling the unplugging of cold-booted vCPUs as a temporary mitigation.
+     * UEFI ACPI standard change will be require to make both 'Enabled' and the
+     * 'online-capable' bit co-exist instead of being mutually exclusive.
+     */
+    if (cs->cold_booted) {
+        error_setg(errp, "Hot-unplug of cold-booted CPU not supported!");
         return;
     }
 
