@@ -667,17 +667,26 @@ static uint32_t virt_acpi_get_gicc_flags(CPUState *cpu)
     }
 
     /*
-     * ARM GIC CPU Interface can be 'online-capable' or 'enabled' at boot
-     * We MUST set 'online-capable' Bit for all hotpluggable CPUs except the
-     * first/boot CPU. Cold-booted CPUs without 'Id' can also be unplugged.
-     * Though as-of-now this is only used as a debugging feature.
+     * ARM GIC CPU Interface can be 'online-capable' or 'enabled' at boot. We
+     * MUST set 'online-capable' bit for all hotpluggable CPUs.
+     * Change Link: https://bugzilla.tianocore.org/show_bug.cgi?id=3706
      *
      *   UEFI ACPI Specification 6.5
      *   Section: 5.2.12.14. GIC CPU Interface (GICC) Structure
      *   Table:   5.37 GICC CPU Interface Flags
      *   Link: https://uefi.org/specs/ACPI/6.5
+     *
+     * Cold-booted CPUs, except for the first/boot CPU, SHOULD be allowed to be
+     * hot(un)plug as well but for this to happen these MUST have
+     * 'online-capable' bit set. Later creates compatibility problem with legacy
+     * OS as it might ignore online-capable' bits during boot time and hence
+     * some CPUs might not get detected. To fix this MADT GIC CPU interface flag
+     * should be allowed to have both bits set i.e. 'online-capable' and
+     * 'Enabled' bits together. This change will require UEFI ACPI standard
+     * change. Till this happens exposing all cold-booted CPUs as 'enabled' only
+     *
      */
-    return cpu && !cpu->cpu_index ? 1 : (1 << 3);
+    return cpu && cpu->cold_booted ? 1 : (1 << 3);
 }
 
 static void
