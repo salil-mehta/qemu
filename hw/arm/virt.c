@@ -809,32 +809,32 @@ static void wire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
     int cpu = CPU(cs)->cpu_index;
     int type = vms->gic_version;
     SysBusDevice *gicbusdev;
-    int ppibase;
+    int intidbase;
     int irqn;
 
-    ppibase = NUM_IRQS + cpu * GIC_INTERNAL + GIC_NR_SGIS;
+    intidbase = NUM_IRQS + cpu * GIC_INTERNAL;
 
     for (irqn = 0; irqn < ARRAY_SIZE(timer_irq); irqn++) {
         qdev_connect_gpio_out(cpudev, irqn,
                               qdev_get_gpio_in(gicdev,
-                                               ppibase + timer_irq[irqn]));
+                                               intidbase + timer_irq[irqn]));
     }
 
     gicbusdev = SYS_BUS_DEVICE(gicdev);
     if (type != VIRT_GIC_VERSION_2) {
         qemu_irq irq = qdev_get_gpio_in(gicdev,
-                                        ppibase + ARCH_GIC_MAINT_IRQ);
+                                        intidbase + ARCH_GIC_MAINT_IRQ);
         qdev_connect_gpio_out_named(cpudev, "gicv3-maintenance-interrupt",
                                     0, irq);
     } else if (vms->virt) {
         qemu_irq irq = qdev_get_gpio_in(gicdev,
-                                        ppibase + ARCH_GIC_MAINT_IRQ);
+                                        intidbase + ARCH_GIC_MAINT_IRQ);
         sysbus_connect_irq(gicbusdev, cpu + 4 * max_cpus, irq);
     }
 
     qdev_connect_gpio_out_named(cpudev, "pmu-interrupt", 0,
                                 qdev_get_gpio_in(gicdev,
-                                                 ppibase + VIRTUAL_PMU_IRQ));
+                                                 intidbase + VIRTUAL_PMU_IRQ));
     sysbus_connect_irq(gicbusdev, cpu, qdev_get_gpio_in(cpudev, ARM_CPU_IRQ));
     sysbus_connect_irq(gicbusdev, cpu + max_cpus,
                        qdev_get_gpio_in(cpudev, ARM_CPU_FIQ));
