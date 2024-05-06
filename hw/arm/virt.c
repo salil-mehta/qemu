@@ -810,14 +810,14 @@ static void wire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
     int type = vms->gic_version;
     SysBusDevice *gicbusdev;
     int ppibase;
-    int irq;
+    int irqn;
 
     ppibase = NUM_IRQS + cpu * GIC_INTERNAL + GIC_NR_SGIS;
 
-    for (irq = 0; irq < ARRAY_SIZE(timer_irq); irq++) {
-        qdev_connect_gpio_out(cpudev, irq,
+    for (irqn = 0; irqn < ARRAY_SIZE(timer_irq); irqn++) {
+        qdev_connect_gpio_out(cpudev, irqn,
                               qdev_get_gpio_in(gicdev,
-                                               ppibase + timer_irq[irq]));
+                                               ppibase + timer_irq[irqn]));
     }
 
     gicbusdev = SYS_BUS_DEVICE(gicdev);
