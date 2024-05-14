@@ -289,12 +289,14 @@ static void *call_rcu_thread(void *opaque)
             while (!node) {
                 bql_unlock();
                 qemu_event_reset(&rcu_call_ready_event);
+                bql_lock();
                 node = try_dequeue();
                 if (!node) {
+                    bql_unlock();
                     qemu_event_wait(&rcu_call_ready_event);
+                    bql_lock();
                     node = try_dequeue();
                 }
-                bql_lock();
             }
 
             n--;
