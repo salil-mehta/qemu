@@ -2890,32 +2890,30 @@ static void machvirt_init(MachineState *machine)
     bool aarch64 = true;
     unsigned int smp_cpus = machine->smp.cpus;
     unsigned int max_cpus = machine->smp.max_cpus;
-
-    possible_cpus = mc->possible_cpu_arch_ids(machine);
+    DeviceClass *dc;
 
     /*
      * In accelerated mode, the memory map is computed earlier in kvm_type()
      * for Linux, or hvf_get_physical_address_range() for macOS to create a
      * VM with the right number of IPA bits.
+     *
+     * Probe the guest execution state even if the memory map is already set:
+     * the aarch64 property is needed to decide whether online-capable CPUs
+     * are supported before fixing the possible CPU count. Only memory-map
+     * initialization remains conditional on !vms->memmap.
+     *
+     * All possible CPUs use machine->cpu_type, so this probe also determines
+     * the execution state used by the later ACPI and PCIe setup.
      */
-    if (!vms->memmap) {
-        Object *cpuobj;
-        ARMCPU *armcpu;
-        int pa_bits;
+    {
+        Object *cpuobj = object_new(machine->cpu_type);
 
-        /*
-         * Instantiate a temporary CPU object to find out about what
-         * we are about to deal with. Once this is done, get rid of
-         * the object.
-         */
-        cpuobj = object_new(possible_cpus->cpus[0].type);
-        armcpu = ARM_CPU(cpuobj);
+        if (!vms->memmap) {
+            virt_set_memmap(vms, arm_pamax(ARM_CPU(cpuobj)));
+        }
 
-        pa_bits = arm_pamax(armcpu);
-
+        aarch64 = object_property_get_bool(cpuobj, "aarch64", NULL);
         object_unref(cpuobj);
-
-        virt_set_memmap(vms, pa_bits);
     }
 
     /* We can probe only here because during property set
@@ -2941,6 +2939,62 @@ static void machvirt_init(MachineState *machine)
     firmware_loaded = virt_firmware_init(vms, sysmem,
                                          secure_sysmem ?: sysmem);
 
+    /*
+     * The maximum number of CPUs depends on the GIC version, or on how
+     * many redistributors we can fit into the memory map (which in turn
+     * depends on whether this is a GICv3 or v4).
+     */
+    if (vms->gic_version == VIRT_GIC_VERSION_2) {
+        virt_max_cpus = GIC_NCPU;
+    } else if (vms->gic_version == VIRT_GIC_VERSION_5) {
+        /* GICv5 CPU capacity is independent of GICv3/v4 redistributors. */
+        virt_max_cpus = 1 << QEMU_GICV5_IAFFID_BITS;
+    } else {
+        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST);
+        if (vms->highmem_redists) {
+            virt_max_cpus += virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
+        }
+    }
+
+    /*
+     * Administrative CPU changes need the ACPI GED and QEMU's PSCI policy
+     * checks. Firmware at EL3 owns PSCI itself, so cannot use this model.
+     */
+    if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
+        qtest_enabled() || vms->gic_version == VIRT_GIC_VERSION_2 ||
+        vms->gic_version == VIRT_GIC_VERSION_5 || !aarch64 ||
+        !firmware_loaded || !virt_is_acpi_enabled(vms) || vms->secure) {
+        if (mc->has_online_capable_cpus && max_cpus > smp_cpus) {
+            if (vms->gic_version == VIRT_GIC_VERSION_2) {
+                warn_report("GICv2 does not support online-capable CPUs");
+            } else if (vms->gic_version == VIRT_GIC_VERSION_5) {
+                warn_report("CPU hotplug is not yet supported with GICv5");
+            }
+        }
+        max_cpus = machine->smp.max_cpus = smp_cpus;
+        mc->has_online_capable_cpus = false;
+    }
+
+    if (max_cpus > virt_max_cpus) {
+        error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
+                     "supported by machine 'mach-virt' (%d)",
+                     max_cpus, virt_max_cpus);
+        if (vms->gic_version != VIRT_GIC_VERSION_2 && !vms->highmem_redists) {
+            error_printf("Try 'highmem-redists=on' for more CPUs\n");
+        }
+
+        exit(1);
+    }
+
+    dc = DEVICE_CLASS(object_class_by_name(machine->cpu_type));
+    if (!dc) {
+        error_report("CPU type '%s' not registered", machine->cpu_type);
+        exit(1);
+    }
+
+    /* uses smp.max_cpus to initialize all possible vCPUs */
+    possible_cpus = mc->possible_cpu_arch_ids(machine);
+
     /* If we have an EL3 boot ROM then the assumption is that it will
      * implement PSCI itself, so disable QEMU's internal implementation
      * so it doesn't get in the way. Instead of starting secondary
@@ -2957,38 +3011,6 @@ static void machvirt_init(MachineState *machine)
         vms->psci_conduit = QEMU_PSCI_CONDUIT_SMC;
     } else {
         vms->psci_conduit = QEMU_PSCI_CONDUIT_HVC;
-    }
-
-    /*
-     * The maximum number of CPUs depends on the GIC version, or on how
-     * many redistributors we can fit into the memory map (which in turn
-     * depends on whether this is a GICv3 or v4).
-     */
-    if (vms->gic_version == VIRT_GIC_VERSION_2) {
-        virt_max_cpus = GIC_NCPU;
-    } else if (vms->gic_version == VIRT_GIC_VERSION_5) {
-        /*
-         * GICv5 imposes no CPU limit beyond the 16-bit IAFFID field.
-         * The maximum number of CPUs will be limited not by this, but
-         * by the MachineClass::max_cpus value we set earlier.
-         */
-        virt_max_cpus = 1 << QEMU_GICV5_IAFFID_BITS;
-    } else {
-        virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST);
-        if (vms->highmem_redists) {
-            virt_max_cpus += virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
-        }
-    }
-
-    if (max_cpus > virt_max_cpus) {
-        error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
-                     "supported by machine 'mach-virt' (%d)",
-                     max_cpus, virt_max_cpus);
-        if (vms->gic_version != VIRT_GIC_VERSION_2 && !vms->highmem_redists) {
-            error_printf("Try 'highmem-redists=on' for more CPUs\n");
-        }
-
-        exit(1);
     }
 
     if (vms->secure && !tcg_enabled() && !qtest_enabled()) {
@@ -3046,7 +3068,6 @@ static void machvirt_init(MachineState *machine)
         numa_cpu_pre_plug(&possible_cpus->cpus[cs->cpu_index], DEVICE(cpuobj),
                           &error_fatal);
 
-        aarch64 &= object_property_get_bool(cpuobj, "aarch64", NULL);
 
         if (!vms->secure) {
             object_property_set_bool(cpuobj, "has_el3", false, NULL);
@@ -4194,6 +4215,9 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
+
+    mc->has_online_capable_cpus = true;
+
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
 
