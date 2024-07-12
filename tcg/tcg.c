@@ -761,6 +761,7 @@ QEMU_BUILD_BUG_ON((int)(offsetof(CPUNegativeOffsetState, tlb.f[0]) -
                   < MIN_TLB_MASK_TABLE_OFS);
 #endif
 
+#if 0
 /* TODO: vCPU Hotplug: Need to come back and fix the TCG   */
 static void free_tcg_plugin_context(TCGContext *s)
 {
@@ -769,6 +770,7 @@ static void free_tcg_plugin_context(TCGContext *s)
     g_free(s->plugin_tb);
 #endif
 }
+#endif
 
 /*
  * All TCG threads except the parent (i.e. the one that called tcg_context_init
@@ -830,7 +832,7 @@ void tcg_unregister_thread(void)
     g_assert(n > 1);
     qatomic_store_release(&tcg_ctxs[n - 1], 0);
 
-    free_tcg_plugin_context(s);
+    //free_tcg_plugin_context(s);
 
     g_free(s);
 }
