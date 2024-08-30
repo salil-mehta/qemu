@@ -1932,6 +1932,49 @@ static void arm_cpu_finalizefn(Object *obj)
 #endif
 }
 
+void arm_cpu_check_features_change(ARMCPU *cpu, Error **errp)
+{
+#ifdef TARGET_AARCH64
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+    ARMCPU *firstcpu = ARM_CPU(first_cpu);
+    DeviceState *dev = DEVICE(cpu);
+
+    if (!arm_feature(&cpu->env, ARM_FEATURE_AARCH64)) {
+        return;
+    }
+
+    /* For now, features of hotplugged CPU MUST match earlier booted CPUs */
+    if (!dev->hotplugged || !mc->has_hotpluggable_cpus) {
+        return;
+    }
+
+    if (cpu_isar_feature(aa64_sve, cpu) &&
+        (cpu->sve_max_vq != firstcpu->sve_max_vq ||
+         cpu->sve_vq.map != firstcpu->sve_vq.map)) {
+        error_setg(errp,
+                   "CPU %d: 'SVE' feature didn't match with existing CPUs",
+                   CPU(cpu)->cpu_index);
+        return;
+    }
+
+    if (cpu_isar_feature(aa64_sme, cpu) &&
+        (cpu->sme_vq.map != firstcpu->sme_vq.map)) {
+        error_setg(errp,
+                   "CPU %d: 'SME' feature didn't match with exisitng CPUs",
+                   CPU(cpu)->cpu_index);
+        return;
+    }
+
+    if (cpu_isar_feature(aa64_pauth, cpu) &&
+        (cpu->prop_pauth != firstcpu->prop_pauth)) {
+        error_setg(errp,
+                   "CPU %d: 'PAuth' feature didn't match with exisitng CPUs",
+                   CPU(cpu)->cpu_index);
+        return;
+    }
+#endif
+}
+
 void arm_cpu_finalize_features(ARMCPU *cpu, Error **errp)
 {
     Error *local_err = NULL;
@@ -1981,6 +2024,13 @@ void arm_cpu_finalize_features(ARMCPU *cpu, Error **errp)
             return;
         }
     }
+
+    /*
+     * As of now, we do not support heterogeneous computing, hence, features of
+     * all cpus should match. Hotplugged vCPUs are not allowed to have
+     * different features than the existing cold-plugged vCPUs
+     */
+    arm_cpu_check_features_change(cpu, &local_err);
 }
 
 static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
