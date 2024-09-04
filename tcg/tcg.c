@@ -761,12 +761,15 @@ QEMU_BUILD_BUG_ON((int)(offsetof(CPUNegativeOffsetState, tlb.f[0]) -
                   < MIN_TLB_MASK_TABLE_OFS);
 #endif
 
-/* TODO: vCPU Hotplug: Need to come back and fix the TCG   */
 static void free_tcg_plugin_context(TCGContext *s)
 {
 #ifdef CONFIG_PLUGIN
-    g_ptr_array_unref(s->plugin_tb->insns);
-    g_free(s->plugin_tb);
+    if (s->plugin_tb) {
+        g_ptr_array_unref(s->plugin_tb->insns);
+        if (!s->plugin_tb->insns) {
+            g_free(s->plugin_tb);
+        }
+    }
 #endif
 }
 
