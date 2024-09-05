@@ -2662,6 +2662,7 @@ static void arm_cpu_realizefn(DeviceState *dev, Error **errp)
     acc->parent_realize(dev, errp);
 }
 
+#ifndef CONFIG_USER_ONLY
 static void arm_cpu_unrealizefn(DeviceState *dev)
 {
     ARMCPUClass *acc = ARM_CPU_GET_CLASS(dev);
@@ -2722,24 +2723,21 @@ static void arm_cpu_unrealizefn(DeviceState *dev)
             arm_unregister_el_change_hooks(cpu);
         }
 
-#ifndef CONFIG_USER_ONLY
         if (cpu->pmu_timer) {
             timer_del(cpu->pmu_timer);
         }
-#endif
     }
 
     cpu_remove_sync(CPU(dev));
     acc->parent_unrealize(dev);
 
-#ifndef CONFIG_USER_ONLY
     timer_del(cpu->gt_timer[GTIMER_PHYS]);
     timer_del(cpu->gt_timer[GTIMER_VIRT]);
     timer_del(cpu->gt_timer[GTIMER_HYP]);
     timer_del(cpu->gt_timer[GTIMER_SEC]);
     timer_del(cpu->gt_timer[GTIMER_HYPVIRT]);
-#endif
 }
+#endif
 
 static ObjectClass *arm_cpu_class_by_name(const char *cpu_model)
 {
@@ -2844,9 +2842,10 @@ static void arm_cpu_class_init(ObjectClass *oc, void *data)
 
     device_class_set_parent_realize(dc, arm_cpu_realizefn,
                                     &acc->parent_realize);
+#ifndef CONFIG_USER_ONLY
     device_class_set_parent_unrealize(dc, arm_cpu_unrealizefn,
                                       &acc->parent_unrealize);
-
+#endif
     device_class_set_props(dc, arm_cpu_properties);
 
     resettable_class_set_parent_phases(rc, NULL, arm_cpu_reset_hold, NULL,
