@@ -2671,22 +2671,7 @@ static void arm_cpu_unrealizefn(DeviceState *dev)
     CPUState *cs = CPU(dev);
     bool has_secure;
 
-    has_secure = cpu->has_el3 || arm_feature(env, ARM_FEATURE_M_SECURITY);
-
     /* rock 'n' un-roll, whatever happened in the arm_cpu_realizefn cleanly */
-    cpu_address_space_destroy(cs, ARMASIdx_NS);
-
-    if (cpu->tag_memory != NULL) {
-        cpu_address_space_destroy(cs, ARMASIdx_TagNS);
-        if (has_secure) {
-            cpu_address_space_destroy(cs, ARMASIdx_TagS);
-        }
-    }
-
-    if (has_secure) {
-        cpu_address_space_destroy(cs, ARMASIdx_S);
-    }
-
     destroy_cpreg_list(cpu);
     arm_cpu_unregister_gdb_regs(cpu);
     unregister_cp_regs_for_features(cpu);
@@ -2729,6 +2714,36 @@ static void arm_cpu_unrealizefn(DeviceState *dev)
     }
 
     cpu_remove_sync(CPU(dev));
+
+    /*
+     * We are intentionally destroying the CPU address space after the vCPU
+     * threads have been joined. This ensures that for TCG, any pending TLB
+     * flushes associated with the CPU are completed. The destruction of the
+     * address space also removes associated listeners, and joining threads
+     * after the address space no longer exists can lead to race conditions with
+     * already queued work for this CPU, which may result in a segmentation
+     * fault (SEGV) in `tcg_commit_cpu()`.
+     *
+     * Alternatively, Peter Maydell has suggested moving the CPU address space
+     * destruction to `cpu_common_unrealize()`, which would be called in the
+     * context of `parent_unrealize()`. This would also address the race
+     * condition in TCG.
+     *
+     * RFC: Question: Any additional thoughts or feedback on this approach would
+     * be appreciated?
+     */
+    has_secure = cpu->has_el3 || arm_feature(env, ARM_FEATURE_M_SECURITY);
+    cpu_address_space_destroy(cs, ARMASIdx_NS);
+    if (cpu->tag_memory != NULL) {
+        cpu_address_space_destroy(cs, ARMASIdx_TagNS);
+        if (has_secure) {
+            cpu_address_space_destroy(cs, ARMASIdx_TagS);
+        }
+    }
+    if (has_secure) {
+        cpu_address_space_destroy(cs, ARMASIdx_S);
+    }
+
     acc->parent_unrealize(dev);
 
     timer_del(cpu->gt_timer[GTIMER_PHYS]);
