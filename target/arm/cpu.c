@@ -1934,7 +1934,7 @@ static void arm_cpu_finalizefn(Object *obj)
 
 void arm_cpu_check_features_change(ARMCPU *cpu, Error **errp)
 {
-#ifdef TARGET_AARCH64
+#if defined(TARGET_AARCH64) && !defined(CONFIG_USER_ONLY)
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     ARMCPU *firstcpu = ARM_CPU(first_cpu);
     DeviceState *dev = DEVICE(cpu);
