@@ -2630,8 +2630,14 @@ static void tcg_commit(MemoryListener *listener)
      *
      * That said, the listener is also called during realize, before
      * all of the tcg machinery for run-on is initialized: thus halt_cond.
+     * Similarly, the listener can also be triggered during the *unrealize*
+     * operation. In such a case, we should avoid using `run_on_cpu` because the
+     * TCG vCPU thread might already be terminated. As a result, the CPU work
+     * will never get processed, and `tcg_commit_cpu` will not be called. This
+     * means that operations like `tlb_flush()` might not be executed,
+     * potentially leading to inconsistencies.
      */
-    if (cpu->halt_cond) {
+    if (cpu->halt_cond && !cpu->unplug) {
         async_run_on_cpu(cpu, tcg_commit_cpu, RUN_ON_CPU_HOST_PTR(cpuas));
     } else {
         tcg_commit_cpu(cpu, RUN_ON_CPU_HOST_PTR(cpuas));
