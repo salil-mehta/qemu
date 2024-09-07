@@ -2409,8 +2409,8 @@ static void machvirt_init(MachineState *machine)
         }
     }
 
-    if (!qemu_tcg_mttcg_enabled() || hvf_enabled() || qtest_enabled() ||
-        (vms->gic_version < VIRT_GIC_VERSION_3)) {
+    if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
+        qtest_enabled() || (vms->gic_version < VIRT_GIC_VERSION_3)) {
         max_cpus = machine->smp.max_cpus = smp_cpus;
         mc->has_hotpluggable_cpus = false;
         if (vms->gic_version >= VIRT_GIC_VERSION_3) {
