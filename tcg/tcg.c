@@ -783,12 +783,13 @@ void tcg_register_thread(void)
     tcg_ctx = &tcg_init_ctx;
 }
 #else
-void tcg_register_thread(void)
+void tcg_register_thread(CPUState *cpu)
 {
     TCGContext *s = g_malloc(sizeof(*s));
     unsigned int i, n;
 
     *s = tcg_init_ctx;
+     s->cpu = cpu;
 
     /* Relink mem_base.  */
     for (i = 0, n = tcg_init_ctx.nb_globals; i < n; ++i) {
@@ -1420,6 +1421,16 @@ TranslationBlock *tcg_tb_alloc(TCGContext *s)
     uintptr_t align = qemu_icache_linesize;
     TranslationBlock *tb;
     void *next;
+
+    /*
+     * The hotplugged vCPU's TCG context might not have any regions allocated.
+     * If this condition is detected, we should flush the TB cache to ensure
+     * that regions can be allocated for the newly hotplugged vCPU's TCGContext.
+     */
+    if (s->tbflush_pend) {
+        s->tbflush_pend = false;
+        return NULL;
+    }
 
  retry:
     tb = (void *)ROUND_UP((uintptr_t)s->code_gen_ptr, align);
