@@ -1285,12 +1285,14 @@ void tcg_register_thread(void)
     tcg_ctx = &tcg_init_ctx;
 }
 #else
-void tcg_register_thread(void)
+void tcg_register_thread(CPUState *cpu)
 {
     TCGContext *s = g_malloc(sizeof(*s));
     unsigned int i, n;
 
     *s = tcg_init_ctx;
+     s->cpu = cpu;
+     s->tbflush_pend = false;
 
     /* Relink mem_base.  */
     for (i = 0, n = tcg_init_ctx.nb_globals; i < n; ++i) {
@@ -1870,6 +1872,21 @@ TranslationBlock *tcg_tb_alloc(TCGContext *s)
     uintptr_t align = qemu_icache_linesize;
     TranslationBlock *tb;
     void *next;
+
+    /*
+     * Lazy realization:
+     * A vCPU that was realized after machine init may have failed its first
+     * code-region allocation (see tcg_region_initial_alloc__locked()) and
+     * requested a deferred TB-cache flush by setting s->tbflush_pend.
+     *
+     * If the flag is set, do not attempt allocation here. Clear the flag and
+     * return NULL so the caller (tb_gen_code()/cpu_exec_loop()) can perform a
+     * safe tb_flush() and then retry TB allocation.
+     */
+    if (s->tbflush_pend) {
+        s->tbflush_pend = false;
+        return NULL;
+    }
 
  retry:
     tb = (void *)ROUND_UP((uintptr_t)s->code_gen_ptr, align);

@@ -396,6 +396,7 @@ struct TCGContext {
 
     /* Track which vCPU triggers events */
     CPUState *cpu;                      /* *_trans */
+    bool tbflush_pend; /* TB flush pending due to lazy vCPU realization */
 
     /* These structures are private to tcg-target.c.inc.  */
     QSIMPLEQ_HEAD(, TCGLabelQemuLdst) ldst_labels;
