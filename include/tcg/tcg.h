@@ -518,6 +518,7 @@ struct TCGContext {
 
     /* Track which vCPU triggers events */
     CPUState *cpu;                      /* *_trans */
+    bool tbflush_pend; /* TB flush pending due to vCPU hotplug */
 
     /* These structures are private to tcg-target.c.inc.  */
 #ifdef TCG_TARGET_NEED_LDST_LABELS
