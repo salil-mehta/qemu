@@ -2482,6 +2482,11 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
     if (kvm_enabled()) {
         kvm_arm_create_host_vcpu(ARM_CPU(cpuobj));
     }
+
+    /* we may have to nuke the TB cache */
+    if (tcg_enabled()) {
+        CPU(cpuobj)->lazy_realized = true;
+    }
 }
 
 static void machvirt_init(MachineState *machine)

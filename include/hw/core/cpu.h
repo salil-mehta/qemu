@@ -486,6 +486,7 @@ struct CPUState {
     bool stop;
     bool stopped;
     bool parked;
+    bool lazy_realized; /* realized after machine init (lazy realization) */
 
     /* Should CPU start in powered-off state? */
     bool start_powered_off;
