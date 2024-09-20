@@ -393,6 +393,22 @@ bool tcg_region_alloc(TCGContext *s)
 static void tcg_region_initial_alloc__locked(TCGContext *s)
 {
     bool err = tcg_region_alloc__locked(s);
+
+    /*
+     * Lazily realized vCPUs (administratively "disabled" at boot and realized
+     * later on demand) may initially fail to obtain even a single code region
+     * if the shared TB cache is under pressure from already running vCPUs.
+     *
+     * Treat this first-allocation failure as non-fatal: mark this TCGContext
+     * to request a TB cache flush and return. The flush is performed later,
+     * synchronously in the vCPU execution path (cpu_exec_loop()/tb_gen_code()),
+     * which is the safe place for tb_flush().
+     */
+    if (err && s->cpu && s->cpu->lazy_realized) {
+        s->tbflush_pend = true;
+        return;
+    }
+
     g_assert(!err);
 }
 
