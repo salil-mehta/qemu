@@ -764,8 +764,14 @@ QEMU_BUILD_BUG_ON((int)(offsetof(CPUNegativeOffsetState, tlb.f[0]) -
 static void free_tcg_plugin_context(TCGContext *s)
 {
 #ifdef CONFIG_PLUGIN
+    unsigned i;
+
     if (s->plugin_tb) {
-        g_ptr_array_unref(s->plugin_tb->insns);
+        for (i = 0; i < s->plugin_tb->insns->len; i++) {
+            g_free(g_ptr_array_index(s->plugin_tb->insns, i));
+        }
+        g_ptr_array_free(s->plugin_tb->insns, TRUE);
+
         if (!s->plugin_tb->insns) {
             g_free(s->plugin_tb);
         }
