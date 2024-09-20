@@ -186,7 +186,7 @@ static void *rr_cpu_thread_fn(void *arg)
     rcu_register_thread();
     force_rcu.notify = rr_force_rcu;
     rcu_add_force_rcu_notifier(&force_rcu);
-    tcg_register_thread();
+    tcg_register_thread(cpu);
 
     bql_lock();
     qemu_thread_get_self(cpu->thread);
