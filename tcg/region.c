@@ -393,6 +393,20 @@ bool tcg_region_alloc(TCGContext *s)
 static void tcg_region_initial_alloc__locked(TCGContext *s)
 {
     bool err = tcg_region_alloc__locked(s);
+
+    /*
+     * Hotplugged vCPUs may initially fail to find even a single available
+     * region. This could be due to the TB cache being under stress from the
+     * existing vCPUs. To mitigate this, the TB cache should be flushed.
+     * Therefore, the region allocation failure should be ignored, and a flag
+     * set to mark `tb_flush()` as pending. The flush will be performed later,
+     * synchronously in the context of `cpu_exec_loop()`/`tb_gen_code()`.
+     */
+    if (err && s->cpu && DEVICE(s->cpu)->hotplugged) {
+            s->tbflush_pend = true;
+        return;
+    }
+
     g_assert(!err);
 }
 
