@@ -126,6 +126,29 @@ static int vmstate_gicv3_cpu_pre_load(void *opaque)
     return 0;
 }
 
+static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
+{
+    GICv3CPUState *cs = opaque;
+
+    /*
+     * If the destination QEMU has more *enabled* vCPUs than the source, we can
+     * either *fail* the migration or override the destination QEMU’s vCPU
+     * configuration to match the source. Since it is safe to override the
+     * `CPUState` of the extra *enabled* vCPUs at the destination, we have
+     * adopted the latter approach as a mitigation for the mismatch.
+     * RFC: Question: any suggestions on this are welcome?
+     */
+    if (!gicv3_cpu_accessible((cs)) && qemu_enabled_cpu(cs->cpu)) {
+        warn_report("Found CPU %d enabled for incoming *disabled* GICC State\n",
+                    cs->cpu->cpu_index);
+        warn_report("Disabling CPU %d to match the incoming migrated state",
+                    cs->cpu->cpu_index);
+        qdev_unrealize(DEVICE(cs->cpu));
+    }
+
+    return 0;
+}
+
 static bool icc_sre_el1_reg_needed(void *opaque)
 {
     GICv3CPUState *cs = opaque;
@@ -186,6 +209,7 @@ static const VMStateDescription vmstate_gicv3_cpu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = vmstate_gicv3_cpu_pre_load,
+    .post_load = vmstate_gicv3_cpu_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(level, GICv3CPUState),
         VMSTATE_UINT32(gicr_ctlr, GICv3CPUState),
@@ -207,6 +231,7 @@ static const VMStateDescription vmstate_gicv3_cpu = {
         VMSTATE_UINT64_2DARRAY(icc_apr, GICv3CPUState, 3, 4),
         VMSTATE_UINT64_ARRAY(icc_igrpen, GICv3CPUState, 3),
         VMSTATE_UINT64(icc_ctlr_el3, GICv3CPUState),
+        VMSTATE_BOOL(gicc_accessible, GICv3CPUState),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * const []) {
