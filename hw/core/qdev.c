@@ -327,6 +327,23 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
                                    errp);
 }
 
+bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
+{
+    g_assert(dev);
+
+    if (bus) {
+        error_setg(errp, "Device %s does not supports 'enable' operation",
+                   object_get_typename(OBJECT(dev)));
+        return false;
+    }
+
+    /* devices like cpu don't have bus */
+    g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
+
+    return object_property_set_str(OBJECT(dev), "admin_power_state", "enabled",
+                                    errp);
+}
+
 int qdev_get_admin_power_state(DeviceState *dev)
 {
     DeviceClass *dc;
