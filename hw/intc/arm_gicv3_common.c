@@ -84,6 +84,15 @@ static int gicv3_post_load(void *opaque, int version_id)
 {
     GICv3State *s = (GICv3State *)opaque;
     ARMGICv3CommonClass *c = ARM_GICV3_COMMON_GET_CLASS(s);
+    MachineState *ms = MACHINE(qdev_get_machine());
+
+    /* ensure source and destination VM 'maxcpu' count matches */
+    if (s->num_cpu != ms->smp.max_cpus) {
+        error_report("GICv3: source num_cpu(%u) != dest maxcpus(%u). "
+                     "Launch dest with -smp maxcpus=%u",
+                     s->num_cpu, ms->smp.max_cpus, s->num_cpu);
+        return -1;
+    }
 
     gicv3_gicd_no_migration_shift_bug_post_load(s);
 
@@ -124,6 +133,32 @@ static int vmstate_gicv3_cpu_pre_load(void *opaque)
     * our reset value).
     */
     cs->icc_sre_el1 = 0x7;
+    return 0;
+}
+
+static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
+{
+    bool src_enabled, dst_enabled;
+    GICv3CPUState *gcs = opaque;
+    CPUState *cs = gcs->cpu;
+
+    if (!cs) {
+        return 0;
+    }
+
+    /* we derive the source vCPU admin state via GIC CPU Interface */
+    src_enabled = gicv3_gicc_accessible(OBJECT(gcs->gic), cs->cpu_index);
+    dst_enabled = qdev_check_enabled(DEVICE(cs));
+
+    if (dst_enabled != src_enabled) {
+        error_report("GICv3: CPU %d admin-state mismatch: dst=%s, src=%s;"
+                     " Aborting!", cs->cpu_index,
+                    dst_enabled ? "enabled" : "disabled",
+                    src_enabled ? "enabled" : "disabled");
+
+        return -1;
+    }
+
     return 0;
 }
 
@@ -187,6 +222,7 @@ static const VMStateDescription vmstate_gicv3_cpu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = vmstate_gicv3_cpu_pre_load,
+    .post_load = vmstate_gicv3_cpu_post_load,
     .fields = (const VMStateField[]) {
         VMSTATE_UINT32(level, GICv3CPUState),
         VMSTATE_UINT32(gicr_ctlr, GICv3CPUState),
@@ -208,6 +244,7 @@ static const VMStateDescription vmstate_gicv3_cpu = {
         VMSTATE_UINT64_2DARRAY(icc_apr, GICv3CPUState, 3, 4),
         VMSTATE_UINT64_ARRAY(icc_igrpen, GICv3CPUState, 3),
         VMSTATE_UINT64(icc_ctlr_el3, GICv3CPUState),
+        VMSTATE_BOOL(gicc_accessible, GICv3CPUState),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * const []) {

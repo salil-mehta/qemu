@@ -590,6 +590,21 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_enable - Power on and administratively enable a device
+ * @dev:   The device to be powered on and administratively enabled
+ * @bus:   The bus on which the device is connected (may be NULL for CPUs)
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function performs both administrative and operational power-on of
+ * the specified device. It transitions the device into ENABLED state and
+ * restores runtime availability. If applicable, the device is also re-added
+ * to the migration stream.
+ *
+ * Returns true if the operation succeeds; false otherwise, with @errp set.
+ */
+bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp);
+
+/**
  * qdev_check_enabled - Check if a device is administratively enabled
  * @dev:  The device to check
  *
