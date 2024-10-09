@@ -976,7 +976,10 @@ CPUState *qemu_get_possible_cpu(int index);
  *
  * Returns: True if it is present possible vCPU else false
  */
-bool qemu_present_cpu(CPUState *cpu);
+static inline bool qemu_present_cpu(CPUState *cpu)
+{
+    return cpu;
+}
 
 /**
  * qemu_enabled_cpu:
@@ -986,7 +989,10 @@ bool qemu_present_cpu(CPUState *cpu);
  *
  * Returns: True if it is 'enabled' else false
  */
-bool qemu_enabled_cpu(CPUState *cpu);
+static inline bool qemu_enabled_cpu(CPUState *cpu)
+{
+    return cpu && !cpu->disabled;
+}
 
 /**
  * cpu_exists:

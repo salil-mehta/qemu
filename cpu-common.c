@@ -119,16 +119,6 @@ CPUState *qemu_get_possible_cpu(int index)
     return CPU(possible_cpus->cpus[index].cpu);
 }
 
-bool qemu_present_cpu(CPUState *cpu)
-{
-    return cpu;
-}
-
-bool qemu_enabled_cpu(CPUState *cpu)
-{
-    return cpu && !cpu->disabled;
-}
-
 CPUState *qemu_get_cpu(int index)
 {
     CPUState *cpu;
