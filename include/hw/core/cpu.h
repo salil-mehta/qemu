@@ -969,30 +969,16 @@ CPUState *qemu_get_cpu(int index);
 CPUState *qemu_get_possible_cpu(int index);
 
 /**
- * qemu_present_cpu:
- * @cpu: The vCPU to check
+ * qemu_get_possible_cpu_archid:
+ * @index: The CPUState@cpu_index value of the CPU to obtain.
+ *         Input index MUST be in range [0, Max Possible CPUs)
  *
- * Checks if the vCPU is amongst the present possible vcpus.
+ * If CPUState object exists,then it gets a CPU arch-id matching
+ * @index in the possible CPU array.
  *
- * Returns: True if it is present possible vCPU else false
+ * Returns: The possible CPU archid.
  */
-static inline bool qemu_present_cpu(CPUState *cpu)
-{
-    return cpu;
-}
-
-/**
- * qemu_enabled_cpu:
- * @cpu: The vCPU to check
- *
- * Checks if the vCPU is enabled.
- *
- * Returns: True if it is 'enabled' else false
- */
-static inline bool qemu_enabled_cpu(CPUState *cpu)
-{
-    return cpu && !cpu->disabled;
-}
+uint64_t qemu_get_possible_cpu_archid(int index);
 
 /**
  * cpu_exists:

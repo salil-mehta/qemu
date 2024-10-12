@@ -911,6 +911,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     vms->gic = qdev_new(gictype);
     qdev_prop_set_uint32(vms->gic, "revision", revision);
     qdev_prop_set_uint32(vms->gic, "num-cpu", max_cpus);
+    qdev_prop_set_uint32(vms->gic, "num-smp-cpu", smp_cpus);
     /* Note that the num-irq property counts both internal and external
      * interrupts; there are always 32 of the former (mandated by GIC spec).
      */
@@ -2105,6 +2106,7 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
 {
     CPUArchIdList *possible_cpus = vms->parent.possible_cpus;
     int max_cpus = MACHINE(vms)->smp.max_cpus;
+    int smp_cpus = MACHINE(vms)->smp.cpus;
     bool aarch64, steal_time;
     CPUState *cpu;
 
@@ -2165,6 +2167,7 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
     }
 
     if (kvm_enabled() || tcg_enabled()) {
+        int i = 0;
         CPU_FOREACH_POSSIBLE(cpu, possible_cpus) {
             /*
              * Now, GIC has been sized with possible CPUs and we dont require
@@ -2185,12 +2188,13 @@ static void virt_cpu_post_init(VirtMachineState *vms, MemoryRegion *sysmem)
              * for the newly created object for the same vCPU or just reuse the
              * old QOM vCPU object?
              */
-            if (!qemu_enabled_cpu(cpu)) {
+            if (i >= smp_cpus) {
                 CPUArchId *cpu_slot;
                 cpu_slot = virt_find_cpu_slot(cpu);
                 cpu_slot->cpu = NULL;
                 object_unref(OBJECT(cpu));
             }
+            i++;
         }
     }
 }
@@ -2497,7 +2501,7 @@ static void machvirt_init(MachineState *machine)
             cpu_slot = virt_find_cpu_slot(cs);
 
            /* GICv3 will need `mp-affinity` to derive `gicr_typer` */
-            virt_cpu_set_properties(cpuobj, cpu_slot, &error_fatal);
+            //virt_cpu_set_properties(cpuobj, cpu_slot, &error_fatal);
 
             /*
              * For KVM, we shall be pre-creating the now disabled/un-plugged
@@ -3147,7 +3151,8 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, dev);
 
     cpu_slot = virt_find_cpu_slot(cs);
-    if (qemu_present_cpu(CPU(cpu_slot->cpu))) {
+    //if (qemu_present_cpu(CPU(cpu_slot->cpu))) {
+    if (cpu_slot->cpu) {
         error_setg(errp, "cpu(id%d=%d:%d:%d:%d) with arch-id %" PRIu64 " exist",
                    cs->cpu_index, cpu->socket_id, cpu->cluster_id, cpu->core_id,
                    cpu->thread_id, cpu_slot->arch_id);

@@ -249,7 +249,7 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
              * might become inconsistent. However, in such cases, the presence
              * of vCPUs has been deliberately simulated at the ACPI level.
              */
-            if (acpi_persistent_cpu(first)) {
+            if (acpi_persistent_cpu(first_cpu)) {
                 state->devs[i].is_present = true;
                 /*
                  * `CPUHotplugState::AcpiCpuStatus::cpu` becomes insignificant

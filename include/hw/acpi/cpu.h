@@ -109,11 +109,10 @@ static inline uint64_t acpi_get_cpu_archid(int cpu_index)
  */
 static inline bool acpi_persistent_cpu(CPUState *cpu)
 {
-    assert(cpu);
     /*
      * returns if 'Presence' of the vCPU is persistent and should be simulated
      * via ACPI even after vCPUs have been unplugged in QOM
      */
-    return cpu->acpi_persistent;
+    return cpu && cpu->acpi_persistent;
 }
 #endif

@@ -138,7 +138,8 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
      * adopted the latter approach as a mitigation for the mismatch.
      * RFC: Question: any suggestions on this are welcome?
      */
-    if (!gicv3_cpu_accessible((cs)) && qemu_enabled_cpu(cs->cpu)) {
+    //if (!gicv3_cpu_accessible((cs)) && qemu_enabled_cpu(cs->cpu)) {
+    if (cs->cpu && !gicv3_cpu_accessible((cs))) {
         warn_report("Found CPU %d enabled for incoming *disabled* GICC State\n",
                     cs->cpu->cpu_index);
         warn_report("Disabling CPU %d to match the incoming migrated state",
@@ -517,17 +518,19 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 
     for (i = 0; i < s->num_cpu; i++) {
         CPUState *cpu = qemu_get_possible_cpu(i);
+        bool gicc_accessible = (i < s->num_smp_cpu);
         uint64_t cpu_affid;
 
         /*
          * Accordingly, set the QOM `GICv3CPUState` as either accessible or
          * inaccessible based on the `CPUState` of the associated QOM vCPU.
          */
-        gicv3_set_cpustate(&s->cpu[i], cpu, qemu_enabled_cpu(cpu));
+        gicv3_set_cpustate(&s->cpu[i], cpu, gicc_accessible);
 
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */
-        gicv3_set_gicv3state(cpu, &s->cpu[i]);
+        if (gicc_accessible)
+            gicv3_set_gicv3state(cpu, &s->cpu[i]);
 
         /* Pre-construct the GICR_TYPER:
          * For our implementation:
@@ -541,7 +544,8 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
          *  VLPIS == 1 if vLPIs supported (GICv4 and up)
          *  PLPIS == 1 if LPIs supported
          */
-        cpu_affid = object_property_get_uint(OBJECT(cpu), "mp-affinity", NULL);
+        // cpu_affid = object_property_get_uint(OBJECT(cpu), "mp-affinity", NULL);
+        cpu_affid = qemu_get_possible_cpu_archid(i);
 
         /* The CPU mp-affinity property is in MPIDR register format; squash
          * the affinity bytes into 32 bits as the GICR_TYPER has them.
@@ -695,6 +699,7 @@ static void arm_gic_common_linux_init(ARMLinuxBootIf *obj,
 
 static Property arm_gicv3_common_properties[] = {
     DEFINE_PROP_UINT32("num-cpu", GICv3State, num_cpu, 1),
+    DEFINE_PROP_UINT32("num-smp-cpu", GICv3State, num_smp_cpu, 1),
     DEFINE_PROP_UINT32("num-irq", GICv3State, num_irq, 32),
     DEFINE_PROP_UINT32("revision", GICv3State, revision, 3),
     DEFINE_PROP_BOOL("has-lpi", GICv3State, lpi_enable, 0),
