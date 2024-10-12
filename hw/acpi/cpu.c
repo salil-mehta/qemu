@@ -232,7 +232,7 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
          * also ACPI 'enabled' by default. These states remain consistent at
          * both the QOM and ACPI levels.
          */
-        if (qemu_enabled_cpu(cpu)) {
+        if (cpu) {
             state->devs[i].is_enabled = true;
             state->devs[i].is_present = true;
             state->devs[i].cpu = cpu;
@@ -249,14 +249,14 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
              * might become inconsistent. However, in such cases, the presence
              * of vCPUs has been deliberately simulated at the ACPI level.
              */
-            if (acpi_persistent_cpu(cpu)) {
+            if (acpi_persistent_cpu(first)) {
                 state->devs[i].is_present = true;
                 /*
                  * `CPUHotplugState::AcpiCpuStatus::cpu` becomes insignificant
                  * in this case
                  */
             } else {
-                state->devs[i].is_present = qemu_present_cpu(cpu);
+                state->devs[i].is_present = false;
                 state->devs[i].cpu = cpu;
             }
         }
