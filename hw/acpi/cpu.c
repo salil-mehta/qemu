@@ -301,10 +301,18 @@ void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
     cdev->cpu = NULL;
 }
 
+static bool cpu_hotplug_cpu_state_needed(void *opaque)
+{
+    AcpiCpuStatus *cdev = opaque;
+
+    return cdev->is_enabled;
+}
+
 static const VMStateDescription vmstate_cpuhp_sts = {
     .name = "CPU hotplug device state",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = cpu_hotplug_cpu_state_needed,
     .fields = (const VMStateField[]) {
         VMSTATE_BOOL(is_inserting, AcpiCpuStatus),
         VMSTATE_BOOL(is_removing, AcpiCpuStatus),

@@ -331,10 +331,18 @@ static const VMStateDescription vmstate_memhp_state = {
     }
 };
 
+static bool cpuhp_needed(void *opaque)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+
+    return mc->has_hotpluggable_cpus;
+}
+
 static const VMStateDescription vmstate_cpuhp_state = {
     .name = "acpi-ged/cpuhp",
     .version_id = 1,
     .minimum_version_id = 1,
+    .needed = cpuhp_needed,
     .fields      = (VMStateField[]) {
         VMSTATE_CPU_HOTPLUG(cpuhp_state, AcpiGedState),
         VMSTATE_END_OF_LIST()
