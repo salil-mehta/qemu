@@ -482,13 +482,13 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
                 /* cpu is present and enabled */
                 aml_append(ifctx, aml_store(aml_int(0xF), sta));
             }
+            aml_append(method, ifctx);
             else_ctx = aml_else();
             {
                 /* cpu is present but disabled */
                 aml_append(else_ctx, aml_store(aml_int(0xD), sta));
             }
-            aml_append(ifctx, else_ctx);
-            aml_append(method, ifctx);
+            aml_append(method, else_ctx);
             aml_append(method, aml_release(ctrl_lock));
             aml_append(method, aml_return(sta));
         }
