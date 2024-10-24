@@ -2491,40 +2491,27 @@ static void machvirt_init(MachineState *machine)
             object_unref(cpuobj);
         } else {
             /*
-             * Handling vCPUs that are yet to be hot-plugged requires the
-             * unrealized `ARMCPU` object for the following purposes:
+             * We will use unrealized `ARMCPU` object for the following purposes
              *
-             * 1. To create the corresponding host KVM vCPU.
+             * 1. To create corresponding host KVM vCPU. The ARM architecture
+             *    does not allow new CPUs to be plugged after the system has
+             *    been initialized, and this constraint is also reflected in KVM
              * 2. During the GICv3 realization phase, the `GICR_TYPER` value is
              *    derived using the fetched MPIDR/mp-affinity. It's worth
              *    considering modifying the GICv3 realization code to directly
              *    fetch the `arch-id`/mp-affinity from the possible vCPUs.
-             * 3. Additionally, the `ARMCPU` object must be retained until
-             *    `virt_cpu_post_init`, as there may be late per-vCPU
-             *    initializations.
-             *
-             * Once these tasks are completed, the initialized `ARMCPU` object
-             * can be safely released as those are not required and will be
-             * recreated when they are {hot,cold}-plugged later.
+             * 3. Initialization of the `ACPICpuState`
+             * 4. For any late per-vCPU initializations in `virt_cpu_post_init`
+             * 5. During ACPI hot(un)plug
              */
             cs->cpu_index = n;
             cpu_slot = virt_find_cpu_slot(cs);
 
-            /*
-             * We will pre-create the KVM vCPUs corresponding to the currently
-             * unplugged but possible QOM vCPUs and park them until they are
-             * actually hot-plugged. The ARM architecture does not allow new
-             * CPUs to be plugged after the system has been initialized, and
-             * this constraint is also reflected in KVM.
-             */
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
                 /*
                  * Override the default architecture ID with the one fetched
-                 * from KVM. After initialization, we will destroy the CPUState
-                 * for disabled vCPUs; however, the CPU slot and its association
-                 * with the architecture ID (and consequently the vCPU ID) will
-                 * remain fixed for the entire lifetime of QEMU.
+                 * from KVM (right now, they are not same)
                  */
                 cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
             }
@@ -2535,10 +2522,6 @@ static void machvirt_init(MachineState *machine)
             object_property_set_int(cpuobj, "mp-affinity", cpu_slot->arch_id,
                                     NULL);
 
-            /*
-             * Add the unplugged vCPU to the vCPU slot temporarily. It will be
-             * released later in the virt_post_init_cpu() function
-             */
             cpu_slot->cpu = cs;
         }
     }
