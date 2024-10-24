@@ -430,7 +430,7 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
     }
 
     /* Update the GICv3 CPU interface accessibiltiy accordingly */
-    gicv3_set_cpustate(&s->cpu[gic_cpuif_num], gic_info->cpu_plugging);
+    gicv3_set_cpustate(&s->cpu[gic_cpuif_num], cpu, gic_info->cpu_plugging);
 
     if (!gic_info->cpu_plugging) {
         return;
