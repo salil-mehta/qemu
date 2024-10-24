@@ -227,9 +227,9 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
     for (i = 0; i < id_list->len; i++) {
         struct CPUState *cpu = CPU(id_list->cpus[i].cpu);
 
+        state->devs[i].cpu = cpu;
         if (cpu && DEVICE(cpu)->realized) {
             state->devs[i].is_enabled = true;
-            state->devs[i].cpu = cpu;
         } else {
             state->devs[i].is_enabled = false;
         }
