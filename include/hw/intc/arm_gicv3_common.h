@@ -256,7 +256,6 @@ struct GICv3State {
     uint32_t nb_redist_regions; /* number of redist regions */
 
     uint32_t num_cpu;
-    uint32_t num_smp_cpu;
     uint32_t num_irq;
     uint32_t revision;
     bool lpi_enable;
@@ -399,19 +398,10 @@ static inline bool gicv3_cpu_accessible(GICv3CPUState *gicc)
 /**
  * gicv3_set_cpustate
  *
- * Sets `GICv3CPUState` and the associated `CPUState` as accessible and
- * available for use
+ * Sets `GICv3CPUState` as accessible and available for use
  */
-static inline void gicv3_set_cpustate(GICv3CPUState *s,
-                                      CPUState *cpu,
-                                      bool gicc_accessible)
+static inline void gicv3_set_cpustate(GICv3CPUState *s, bool gicc_accessible)
 {
-    if (gicc_accessible) {
-        s->cpu = cpu;
-        s->gicc_accessible = true;
-    } else {
-        s->cpu = NULL;
-        s->gicc_accessible = false;
-    }
+    s->gicc_accessible = gicc_accessible;
 }
 #endif
