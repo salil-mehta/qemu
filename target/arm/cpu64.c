@@ -797,13 +797,6 @@ static void aarch64_cpu_initfn(Object *obj)
 
     /* TODO: re-check if this is necessary still */
     cs->thread_id = 0;
-    /*
-     * To provide the guest with a persistent view of vCPU presence, ACPI may
-     * need to simulate the presence of vCPUs even when they are not present in
-     * the QOM or are in a disabled state. This flag is utilized during the
-     * initialization of ACPI hotplug state and during vCPU hot-unplug events.
-     */
-    cs->acpi_persistent = true;
 }
 
 static void aarch64_cpu_finalizefn(Object *obj)
