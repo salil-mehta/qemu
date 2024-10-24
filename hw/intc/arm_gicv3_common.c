@@ -520,7 +520,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
          * Accordingly, set the QOM `GICv3CPUState` as either accessible or
          * inaccessible based on the `CPUState` of the associated QOM vCPU.
          */
-        gicv3_set_cpustate(&s->cpu[i], DEVICE(cpu)->realized);
+        gicv3_set_cpustate(&s->cpu[i], cpu, DEVICE(cpu)->realized);
 
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */

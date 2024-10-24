@@ -398,10 +398,14 @@ static inline bool gicv3_cpu_accessible(GICv3CPUState *gicc)
 /**
  * gicv3_set_cpustate
  *
- * Sets `GICv3CPUState` as accessible and available for use
+ * Sets `GICv3CPUState` and the associated `CPUState` as accessible and
+ * available for use
  */
-static inline void gicv3_set_cpustate(GICv3CPUState *s, bool gicc_accessible)
+static inline void gicv3_set_cpustate(GICv3CPUState *s,
+                                      CPUState *cpu,
+                                      bool gicc_accessible)
 {
+    s->cpu = cpu;
     s->gicc_accessible = gicc_accessible;
 }
 #endif
