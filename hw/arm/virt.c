@@ -2461,13 +2461,13 @@ static void machvirt_init(MachineState *machine)
         object_property_set_int(cpuobj, "thread-id",
                                 virt_get_thread_id(machine, n), NULL);
 
-        cpu_slot = virt_find_cpu_slot(cs);
         if (n < smp_cpus) {
             warn_report("[%s] 1. CPU %d obj->ref %d", __func__, n, cpuobj->ref);
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
             warn_report("[%s] 2. Realized CPU %d obj->ref %d", __func__, n, cpuobj->ref);
             object_unref(cpuobj);
             warn_report("[%s] 3. After unref, CPU %d obj->ref %d", __func__, n, cpuobj->ref);
+            cpu_slot = virt_find_cpu_slot(cs);
         } else {
             /*
              * We will use unrealized `ARMCPU` object for the following purposes
@@ -2485,6 +2485,7 @@ static void machvirt_init(MachineState *machine)
              */
             cs->cpu_index = n;
 
+            cpu_slot = virt_find_cpu_slot(cs);
             virt_cpu_set_properties(OBJECT(cs), cpu_slot, &error_fatal);
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
