@@ -2481,20 +2481,18 @@ static void machvirt_init(MachineState *machine)
             cs->cpu_index = n;
             cpu_slot = virt_find_cpu_slot(cs);
 
+            virt_cpu_set_properties(OBJECT(cs), cpu_slot, &error_fatal);
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
                 /*
                  * Override the default architecture ID with the one fetched
-                 * from KVM (right now, they are not same)
+                 * from KVM (right now, they are not same). GICv3 realization
+                 * will need `mp-affinity` to derive `gicr_typer`
                  */
                 cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
+                object_property_set_int(cpuobj, "mp-affinity",
+                                        cpu_slot->arch_id, NULL);
             }
-
-           /*
-            * GICv3 realization will need `mp-affinity` to derive `gicr_typer`
-            */
-            object_property_set_int(cpuobj, "mp-affinity", cpu_slot->arch_id,
-                                    NULL);
 
             cpu_slot->cpu = cs;
         }
