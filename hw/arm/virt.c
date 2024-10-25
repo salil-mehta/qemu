@@ -788,6 +788,7 @@ const int timer_irq[] = {
     [GTIMER_SEC]  = ARCH_TIMER_S_EL1_IRQ,
 };
 
+#if 0
 static void unwire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
 {
     MachineState *ms = MACHINE(vms);
@@ -826,7 +827,7 @@ static void unwire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
                                         cpu + irq * max_cpus);
     }
 }
-
+#endif
 static void wire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
 {
     MachineState *ms = MACHINE(vms);
@@ -885,7 +886,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     SysBusDevice *gicbusdev;
     const char *gictype;
     int i;
-    unsigned int smp_cpus = ms->smp.cpus;
+    //unsigned int smp_cpus = ms->smp.cpus;
     unsigned int max_cpus = ms->smp.max_cpus;
     uint32_t nb_redist_regions = 0;
     int revision;
@@ -3125,7 +3126,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
          */
         error_report("Did not find CPU in the slot. Shouldn't have happened!");
         error_report("We don't support physical CPU hotplug on ARM platforms");
-        assert();
+        assert(cpu_slot->cpu);
     }
     virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
 
