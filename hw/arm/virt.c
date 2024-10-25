@@ -3146,6 +3146,9 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     if (!dev->hotplugged) {
         cs->cold_booted = true;
     }
+
+    warn_report("[%s] CPU %d (HP %d) obj->ref %d", __func__, cs->cpu_index,
+                dev->hotplugged, OBJECT(cs)->ref);
 }
 
 static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
