@@ -3104,11 +3104,21 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, dev);
 
     cpu_slot = virt_find_cpu_slot(cs);
-    if (cpu_slot->cpu) {
+    if (cpu_slot->cpu && DEVICE(cpu_slot->cpu)->realized) {
         error_setg(errp, "cpu(id%d=%d:%d:%d:%d) with arch-id %" PRIu64 " exist",
                    cs->cpu_index, cpu->socket_id, cpu->cluster_id, cpu->core_id,
                    cpu->thread_id, cpu_slot->arch_id);
         return;
+    }
+
+    if (!cpu_slot->cpu && dev->hotplugged) {
+        /*
+         * case when physical CPU hotplug is supported and CPUs can be removed
+         * from the CPU slot or might be absent during the VM init time
+         */
+        error_report("Did not find CPU in the slot. Shouldn't have happened!");
+        error_report("We don't support physical CPU hotplug on ARM platforms");
+        assert();
     }
     virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
 
