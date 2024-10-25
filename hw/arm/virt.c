@@ -979,7 +979,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
      * and the GIC's IRQ/FIQ/VIRQ/VFIQ/NMI/VINMI interrupt outputs to the
      * CPU's inputs.
      */
-    for (i = 0; i < smp_cpus; i++) {
+    for (i = 0; i < max_cpus; i++) {
         wire_gic_cpu_irqs(vms, qemu_get_cpu(i));
     }
 
@@ -3134,7 +3134,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      */
     if (vms->acpi_dev) {
         virt_update_gic(vms, cs, true);
-        wire_gic_cpu_irqs(vms, cs);
+        //wire_gic_cpu_irqs(vms, cs);
     }
 
     if (!dev->hotplugged) {
@@ -3258,7 +3258,7 @@ static void virt_cpu_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
         goto fail;
     }
 
-    unwire_gic_cpu_irqs(vms, cs);
+    //unwire_gic_cpu_irqs(vms, cs);
     virt_update_gic(vms, cs, false);
 
     qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
