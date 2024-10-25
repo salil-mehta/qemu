@@ -2460,6 +2460,7 @@ static void machvirt_init(MachineState *machine)
         object_property_set_int(cpuobj, "thread-id",
                                 virt_get_thread_id(machine, n), NULL);
 
+        cpu_slot = virt_find_cpu_slot(cs);
         if (n < smp_cpus) {
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
             object_unref(cpuobj);
@@ -2479,22 +2480,24 @@ static void machvirt_init(MachineState *machine)
              * 5. During ACPI hot(un)plug
              */
             cs->cpu_index = n;
-            cpu_slot = virt_find_cpu_slot(cs);
 
             virt_cpu_set_properties(OBJECT(cs), cpu_slot, &error_fatal);
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
-                /*
-                 * Override the default architecture ID with the one fetched
-                 * from KVM (right now, they are not same). GICv3 realization
-                 * will need `mp-affinity` to derive `gicr_typer`
-                 */
-                cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
-                object_property_set_int(cpuobj, "mp-affinity",
-                                        cpu_slot->arch_id, NULL);
             }
 
             cpu_slot->cpu = cs;
+        }
+
+        if (kvm_enabled()) {
+            /*
+             * Override the default architecture ID with the one fetched from
+             * KVM. Currently, KVM derives the architecture ID from the vCPU ID
+             * specified by QEMU. In the future, we might implement a change
+             * where the entire architecture ID can be configured directly by
+             * QEMU.
+             */
+            cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
         }
     }
 
@@ -3123,15 +3126,9 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
 
     /*
-     * Fix the GIC for the newly plugged vCPU. The QOM CPU object for this new
-     * vCPU needs to be updated in the corresponding QOM `GICv3CPUState` object.
-     * Additionally, the IRQs for this new CPU object must be re-wired. This
-     * update is confined to the QOM layer and does not affect KVM, as KVM was
-     * already pre-sized with possible CPUs during VM initialization. This
-     * serves as a workaround to the constraints posed by the ARM architecture
-     * in supporting CPU hotplug, for which no formal specification exists.
+     * Mark the `GICv3CPUState` corresponding to this `CPUState` as `accessible`
+     * Also wire the GIC IRQs both for cold- and hot-plugged vCPUs.
      *
-     * This GIC IRQ patch-up is necessary for both cold- and hot-plugged vCPUs.
      * Cold-initialized vCPUs have their GIC state initialized earlier during
      * `machvirt_init()`.
      */
@@ -3156,16 +3153,6 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     /* insert the cold/hot-plugged vcpu in the slot */
     cpu_slot = virt_find_cpu_slot(cs);
     cpu_slot->cpu = CPU(dev);
-
-    if (kvm_enabled()) {
-        /*
-         * Override the default architecture ID with the one fetched from KVM
-         * Currently, KVM derives the architecture ID from the vCPU ID specified
-         * by QEMU. In the future, we might implement a change where the entire
-         * architecture ID can be configured directly by QEMU.
-         */
-        cpu_slot->arch_id = arm_cpu_mp_affinity(ARM_CPU(cs));
-    }
 
     if (vms->acpi_dev) {
         qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
