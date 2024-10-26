@@ -1847,12 +1847,20 @@ virt_find_standby_device(DeviceListener *listener, const QDict *device_opts,
 
     if (!device_opts)
         return NULL;
+    if (!qdict_haskey(device_opts, "core-id")) {
+         warn_report("[%s] core_id does not exist\n", __func__);
+    } else {
+         warn_report("[%s] core_id exist\n", __func__);
+    }
 
     /* fetch the topology of the cpu being plugged */
     socket_id = qdict_get_try_int(device_opts, "socket-id", 0);
     cluster_id = qdict_get_try_int(device_opts, "cluster-id", 0);
     core_id = qdict_get_try_int(device_opts, "core-id", 0);
     thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
+
+    warn_report("[%s] socket_id %ld cluster_id %ld core_id %ld thread_id %ld\n",
+                __func__, socket_id, cluster_id, core_id, thread_id);
 
     /*
      * The failure of the sanity check just means inability to locate a
@@ -1881,6 +1889,8 @@ virt_find_standby_device(DeviceListener *listener, const QDict *device_opts,
     clus_vcpu_num = cluster_id * (ms->smp.threads * ms->smp.cores);
     core_vcpu_num = core_id * ms->smp.threads;
     cpu_id = (sock_vcpu_num + clus_vcpu_num + core_vcpu_num) + thread_id;
+
+    warn_report("[%s] fetched CPU ID %d", __func__, cpu_id);
 
     cpu = qemu_get_possible_cpu(cpu_id);
     if (!cpu) {
