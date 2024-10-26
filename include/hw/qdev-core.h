@@ -309,6 +309,17 @@ struct DeviceListener {
      */
     bool (*hide_device)(DeviceListener *listener, const QDict *device_opts,
                         bool from_json, Error **errp);
+    /*
+     * Used by qdev to find any stand-by device corresponding to the
+     * device opts
+     *
+     * Returns the stand-by `DeviceState` on sucess and NULL if
+     * stand-by device was not found. On errors, it returns NULL
+     * and errp is set
+     */
+    DeviceState * (*find_standby_device)(DeviceListener *listener,
+                                         const QDict *device_opts,
+                                         bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -1070,6 +1081,20 @@ void device_listener_unregister(DeviceListener *listener);
  * Return: if the device should be added now or not.
  */
 bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
+
+/**
+ * qdev_find_standby_device() - find the stand-by device
+ *
+ * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
+ * @errp: pointer to error object
+ *
+ * When a device is added via qdev_device_add() this will be called.
+ *
+ * Return: a stand-by DeviceState on success and NULL on failure
+ */
+DeviceState *
+qdev_find_standby_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

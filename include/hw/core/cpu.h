@@ -579,6 +579,8 @@ struct CPUState {
      */
     char neg_align[-sizeof(CPUNegativeOffsetState) % 16] QEMU_ALIGNED(16);
     CPUNegativeOffsetState neg;
+
+    DeviceListener cpu_listener;
 };
 
 /* Validate placement of CPUNegativeOffsetState. */
