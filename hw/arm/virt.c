@@ -3126,7 +3126,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
          */
         error_report("Did not find CPU in the slot. Shouldn't have happened!");
         error_report("We don't support physical CPU hotplug on ARM platforms");
-        assert();
+        g_assert(0);
     }
     virt_cpu_set_properties(OBJECT(cs), cpu_slot, errp);
 
