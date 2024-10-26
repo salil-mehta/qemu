@@ -1850,8 +1850,7 @@ virt_find_standby_device(DeviceListener *listener, const QDict *device_opts,
     if (!qdict_haskey(device_opts, "core-id")) {
          warn_report("[%s] core_id does not exist\n", __func__);
     } else {
-         core_id = qdict_get_int(device_opts, "core-id");
-         warn_report("[%s] core_id %ld exist\n", __func__, core_id);
+         warn_report("[%s] core_id %s exist\n", __func__, qdict_get_str(device_opts, "core-id"));
     }
 
     /* fetch the topology of the cpu being plugged */
