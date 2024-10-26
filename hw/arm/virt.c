@@ -1830,6 +1830,66 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
+static DeviceState *
+virt_find_standby_device(DeviceListener *listener, const QDict *device_opts,
+                      Error **errp)
+{
+    VirtMachineState *vms = container_of(listener, VirtMachineState,
+                                         device_listener);
+    int cpu_id, sock_vcpu_num, clus_vcpu_num, core_vcpu_num;
+    int64_t socket_id, cluster_id, core_id, thread_id;    
+    MachineState *ms = MACHINE(vms);
+    CPUState *cpu;
+
+    /* make sure this call is for us */
+    if (!object_dynamic_cast(OBJECT(vms), TYPE_VIRT_MACHINE))
+        return NULL;
+
+    if (!device_opts)
+        return NULL;
+
+    /* fetch the topology of the cpu being plugged */
+    socket_id = qdict_get_try_int(device_opts, "socket-id", 0);
+    cluster_id = qdict_get_try_int(device_opts, "cluster-id", 0);
+    core_id = qdict_get_try_int(device_opts, "core-id", 0);
+    thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
+
+    /*
+     * The failure of the sanity check just means inability to locate a
+     * standby CPU. This issue will eventually be addressed during the CPU
+     * pre-plug phase, where it will result in an appropriate error.
+     */
+    if ((thread_id < 0) || (thread_id >= ms->smp.threads)) {
+        return NULL;
+    }
+
+    if ((core_id < 0) || (core_id >= ms->smp.cores)) {
+        return NULL;
+    }
+
+    if ((cluster_id < 0) || (cluster_id >= ms->smp.clusters)) {
+        return NULL;
+    }
+
+    if ((socket_id < 0) || (socket_id >= ms->smp.sockets)) {
+        return NULL;
+    }
+
+    /* get vcpu-id(logical cpu index) for this vcpu from this topology */
+    sock_vcpu_num = socket_id * (ms->smp.threads * ms->smp.cores *
+                    ms->smp.clusters);
+    clus_vcpu_num = cluster_id * (ms->smp.threads * ms->smp.cores);
+    core_vcpu_num = core_id * ms->smp.threads;
+    cpu_id = (sock_vcpu_num + clus_vcpu_num + core_vcpu_num) + thread_id;
+
+    cpu = qemu_get_possible_cpu(cpu_id);
+    if (!cpu) {
+        return NULL;
+    }
+
+    return DEVICE(cpu);
+}
+
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
 {
     uint8_t clustersz = ARM_DEFAULT_CPUS_PER_CLUSTER;
@@ -2440,6 +2500,8 @@ static void machvirt_init(MachineState *machine)
     create_fdt(vms);
 
     notifier_list_init(&vms->cpuhp_notifiers);
+    vms->device_listener.find_standby_device = virt_find_standby_device;
+    device_listener_register(&vms->device_listener);
 
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {
