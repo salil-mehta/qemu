@@ -436,6 +436,9 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
         return;
     }
 
+    /* re-stitch the GICv3 CPU interface to this new vCPU */
+    gicv3_set_gicv3state(cpu, &s->cpu[gic_cpuif_num]);
+
     /*
      * define and register the GICv3 CPU interface `system registers` for
      * this new vCPU being hotplugged
