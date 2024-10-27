@@ -3217,7 +3217,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      */
     if (vms->acpi_dev) {
         virt_update_gic(vms, cs, true);
-        wire_gic_cpu_irqs(vms, cs);
+        //wire_gic_cpu_irqs(vms, cs);
     }
 
     if (!dev->hotplugged) {
@@ -3234,11 +3234,11 @@ static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
-    CPUArchId *cpu_slot;
+    //CPUArchId *cpu_slot;
 
     /* insert the cold/hot-plugged vcpu in the slot */
-    cpu_slot = virt_find_cpu_slot(cs);
-    cpu_slot->cpu = CPU(dev);
+    //cpu_slot = virt_find_cpu_slot(cs);
+    //cpu_slot->cpu = CPU(dev);
 
     if (vms->acpi_dev) {
         qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
