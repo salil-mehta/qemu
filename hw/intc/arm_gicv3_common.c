@@ -415,12 +415,12 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
 {
     GICv3CPUHotplugInfo *gic_info = (GICv3CPUHotplugInfo *)data;
     CPUState *cpu = gic_info->cpu;
-    ARMGICv3CommonClass *agcc;
+    ////ARMGICv3CommonClass *agcc;
     int gic_cpuif_num;
     GICv3State *s;
 
     s = ARM_GICV3_COMMON(gic_info->gic);
-    agcc = ARM_GICV3_COMMON_GET_CLASS(s);
+    //agcc = ARM_GICV3_COMMON_GET_CLASS(s);
 
     /* this shall get us mapped GICv3 CPU interface corresponding to MPIDR */
     gic_cpuif_num = arm_gicv3_get_proc_num(s, cpu);
@@ -438,13 +438,13 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
     }
 
     /* re-stitch the GICv3 CPU interface to this new vCPU */
-    gicv3_set_gicv3state(cpu, &s->cpu[gic_cpuif_num]);
+    //gicv3_set_gicv3state(cpu, &s->cpu[gic_cpuif_num]);
 
     /*
      * define and register the GICv3 CPU interface `system registers` for
      * this new vCPU being hotplugged
      */
-    agcc->init_cpu_reginfo(cpu);
+    //agcc->init_cpu_reginfo(cpu);
 }
 
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
