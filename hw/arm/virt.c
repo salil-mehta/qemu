@@ -1856,7 +1856,13 @@ virt_find_standby_device(DeviceListener *listener, const QDict *device_opts,
     /* fetch the topology of the cpu being plugged */
     socket_id = qdict_get_try_int(device_opts, "socket-id", 0);
     cluster_id = qdict_get_try_int(device_opts, "cluster-id", 0);
-    core_id = qdict_get_try_int(device_opts, "core-id", 0);
+    if (1) {
+        core_id = strtol(qdict_get_str(device_opts, "core-id"), NULL, 10);
+    } else {
+        core_id = qdict_get_try_int(device_opts, "core-id", 0);
+    }
+
+    //core_id = qdict_get_try_int(device_opts, "core-id", 0);
     thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
 
     warn_report("[%s] socket_id %ld cluster_id %ld core_id %ld thread_id %ld\n",
