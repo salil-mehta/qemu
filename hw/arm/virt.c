@@ -3213,7 +3213,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * the IRQs
      */
     virt_update_gic(vms, cs, true);
-    wire_gic_cpu_irqs(vms, cs);
+    //wire_gic_cpu_irqs(vms, cs);
 }
 
 static void virt_cpu_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
