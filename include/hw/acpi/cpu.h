@@ -55,6 +55,7 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
 typedef struct CPUHotplugFeatures {
     bool acpi_1_compatible;
     bool has_legacy_cphp;
+    bool always_present_cpus;
     bool fw_unplugs_cpu;
     const char *smi_path;
 } CPUHotplugFeatures;
