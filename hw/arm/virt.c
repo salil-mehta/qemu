@@ -3212,7 +3212,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
      * update the GIC CPU interface with newly plugged vCPU and wire
      * the IRQs
      */
-    virt_update_gic(vms, cs, true);
+    //virt_update_gic(vms, cs, true);
     //wire_gic_cpu_irqs(vms, cs);
 }
 
@@ -3304,7 +3304,7 @@ static void virt_cpu_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
 
     //unwire_gic_cpu_irqs(vms, cs);
-    virt_update_gic(vms, cs, false);
+    //virt_update_gic(vms, cs, false);
 
     qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
     vms->boot_cpus--;
