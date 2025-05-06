@@ -3201,8 +3201,8 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     }
 
     /* remove the old vCPU & insert the cold-/hot-plugged vCPU in the slot */
-    object_unref(OBJECT(cpu_slot->cpu));
-    cpu_slot->cpu = CPU(dev);
+    //object_unref(OBJECT(cpu_slot->cpu));
+    //cpu_slot->cpu = CPU(dev);
     /* reference this new object so that we dont loose it on future unplug */
     object_ref(OBJECT(cpu_slot->cpu));
 
