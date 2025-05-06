@@ -3303,7 +3303,7 @@ static void virt_cpu_unplug(HotplugHandler *hotplug_dev, DeviceState *dev,
         goto fail;
     }
 
-    unwire_gic_cpu_irqs(vms, cs);
+    //unwire_gic_cpu_irqs(vms, cs);
     virt_update_gic(vms, cs, false);
 
     qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
