@@ -336,7 +336,8 @@ build_la_ged_aml(Aml *dsdt, MachineState *machine)
     LoongArchVirtMachineState *lvms = LOONGARCH_VIRT_MACHINE(machine);
 
     build_ged_aml(dsdt, "\\_SB."GED_DEVICE,
-                  HOTPLUG_HANDLER(lvms->acpi_ged),
+                 /* HOTPLUG_HANDLER(lvms->acpi_ged), */
+                  lvms->acpi_ged,
                   VIRT_SCI_IRQ, AML_SYSTEM_MEMORY,
                   VIRT_GED_EVT_ADDR);
     event = object_property_get_uint(OBJECT(lvms->acpi_ged),

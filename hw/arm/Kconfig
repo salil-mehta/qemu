@@ -35,6 +35,7 @@ config ARM_VIRT
     select ACPI_APEI
     select ACPI_VIOT
     select ACPI_CPU_HOTPLUG
+    select ACPI_CPU_OSPM_INTERFACE
     select VIRTIO_MEM_SUPPORTED
     select ACPI_CXL
     select ACPI_HMAT

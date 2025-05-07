@@ -728,6 +728,9 @@ static QemuOptsList qemu_smp_opts = {
             .name = "cpus",
             .type = QEMU_OPT_NUMBER,
         }, {
+            .name = "disabledcpus",
+            .type = QEMU_OPT_NUMBER,
+        }, {
             .name = "drawers",
             .type = QEMU_OPT_NUMBER,
         }, {
@@ -1220,6 +1223,16 @@ static int device_init_func(void *opaque, QemuOpts *opts, Error **errp)
         object_unref(OBJECT(dev));
     }
     return 0;
+}
+
+static int deviceset_init_func(void *opaque, QemuOpts *opts, Error **errp)
+{
+    QDict *qdict = qemu_opts_to_qdict(opts, NULL);
+
+    qmp_device_set(qdict, errp);
+    qobject_unref(qdict);
+
+    return *errp ? -1 : 0;
 }
 
 static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
@@ -2666,6 +2679,11 @@ static void qemu_create_cli_devices(void)
         object_unref(OBJECT(dev));
         loc_pop(&opt->loc);
     }
+
+    /* add deferred 'deviceset' list handling - common to JSON/non-JSON path */
+    qemu_opts_foreach(qemu_find_opts("deviceset"), deviceset_init_func, NULL,
+                      &error_fatal);
+
     rom_reset_order_override();
 }
 
@@ -2766,6 +2784,7 @@ void qemu_init(int argc, char **argv)
     qemu_add_drive_opts(&bdrv_runtime_opts);
     qemu_add_opts(&qemu_chardev_opts);
     qemu_add_opts(&qemu_device_opts);
+    qemu_add_opts(&qemu_deviceset_opts);
     qemu_add_opts(&qemu_netdev_opts);
     qemu_add_opts(&qemu_nic_opts);
     qemu_add_opts(&qemu_net_opts);
@@ -3358,6 +3377,30 @@ void qemu_init(int argc, char **argv)
                     QTAILQ_INSERT_TAIL(&device_opts, opt, next);
                 } else {
                     if (!qemu_opts_parse_noisily(qemu_find_opts("device"),
+                                                 optarg, true)) {
+                        exit(1);
+                    }
+                }
+                break;
+            case QEMU_OPTION_deviceset:
+                if (optarg[0] == '{') {
+                     /* JSON input: convert to QDict and then to QemuOpts */
+                     QObject *obj = qobject_from_json(optarg, &error_fatal);
+                     QDict *qdict = qobject_to(QDict, obj);
+                     if (!qdict) {
+                         error_report("Invalid JSON object for -deviceset");
+                         exit(1);
+                     }
+
+                     opts = qemu_opts_from_qdict(qemu_find_opts("deviceset"),
+                                                 qdict, &error_fatal);
+                     qobject_unref(qdict);
+                     if (!opts) {
+                         error_report_err(error_fatal);
+                         exit(1);
+                     }
+                } else {
+                    if (!qemu_opts_parse_noisily(qemu_find_opts("deviceset"),
                                                  optarg, true)) {
                         exit(1);
                     }

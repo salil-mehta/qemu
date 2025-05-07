@@ -668,15 +668,14 @@ static uint32_t virt_acpi_get_gicc_flags(CPUState *cpu)
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
     /* can only exist in 'enabled' state */
-    if (!mc->has_hotpluggable_cpus) {
+    if (!mc->has_power_manageable_cpus) {
         return 1;
     }
 
     /*
      * ARM GIC CPU Interface can be 'online-capable' or 'enabled' at boot
-     * We MUST set 'online-capable' bit for all hotpluggable CPUs except the
-     * first/boot CPU. Cold-booted CPUs without 'Id' can also be unplugged.
-     * Though as-of-now this is only used as a debugging feature.
+     * We MUST set 'online-capable' bit for all 'standby' capable CPUs except
+     * the first/boot CPU.
      *
      *   UEFI ACPI Specification 6.5
      *   Section: 5.2.12.14. GIC CPU Interface (GICC) Structure
@@ -848,8 +847,7 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
      */
     scope = aml_scope("\\_SB");
     if (vms->acpi_dev) {
-        build_ged_aml(scope, "\\_SB."GED_DEVICE,
-                      HOTPLUG_HANDLER(vms->acpi_dev),
+        build_ged_aml(scope, "\\_SB."GED_DEVICE, vms->acpi_dev,
                       irqmap[VIRT_ACPI_GED] + ARM_SPI_BASE, AML_SYSTEM_MEMORY,
                       memmap[VIRT_ACPI_GED].base);
     } else {
@@ -865,7 +863,9 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
         };
 
         build_cpus_aml(scope, ms, opts, NULL, memmap[VIRT_CPUHP_ACPI].base,
-                       "\\_SB", AML_GED_EVT_CPU_SCAN_METHOD, AML_SYSTEM_MEMORY);
+                       "\\_SB", AML_GED_EVT_CPUHP_SCAN_METHOD, AML_SYSTEM_MEMORY);
+        acpi_build_cpus_aml(scope, memmap[VIRT_CPUPS_ACPI].base, "\\_SB",
+                            AML_GED_EVT_CPUPS_SCAN_METHOD);
     } else {
         acpi_dsdt_add_cpus(scope, vms);
     }

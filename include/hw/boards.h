@@ -130,6 +130,7 @@ typedef struct CPUArchId {
  * CPUArchIdList:
  * @len - number of @CPUArchId items in @cpus array
  * @cpus - array of present or possible CPUs for current machine configuration
+ * @standby_cpus - array of standby CPUs (if supported by machine)
  */
 typedef struct {
     int len;
@@ -289,6 +290,7 @@ struct MachineClass {
     bool rom_file_has_mr;
     int minimum_page_bits;
     bool has_hotpluggable_cpus;
+    bool has_power_manageable_cpus;
     bool ignore_memory_transaction_failures;
     int numa_mem_align_shift;
     const char * const *valid_cpu_types;
@@ -306,11 +308,14 @@ struct MachineClass {
 
     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
                                            DeviceState *dev);
+    PowerStateHandler *(*get_powerstate_handler)(MachineState *machine,
+                                                 DeviceState *dev);
     bool (*hotplug_allowed)(MachineState *state, DeviceState *dev,
                             Error **errp);
     CpuInstanceProperties (*cpu_index_to_instance_props)(MachineState *machine,
                                                          unsigned cpu_index);
     const CPUArchIdList *(*possible_cpu_arch_ids)(MachineState *machine);
+    const CPUArchIdList *(*standby_cpu_arch_ids)(MachineState *machine);
     int64_t (*get_default_cpu_node_id)(const MachineState *ms, int idx);
     ram_addr_t (*fixup_ram_size)(ram_addr_t size);
     uint64_t smbios_memory_device_size;
@@ -346,6 +351,7 @@ typedef struct DeviceMemoryState {
 /**
  * CpuTopology:
  * @cpus: the number of present logical processors on the machine
+ * @disabledcpus: the number additional present but admin disabled cpus
  * @drawers: the number of drawers on the machine
  * @books: the number of books in one drawer
  * @sockets: the number of sockets in one book
@@ -358,6 +364,7 @@ typedef struct DeviceMemoryState {
  */
 typedef struct CpuTopology {
     unsigned int cpus;
+    unsigned int disabledcpus;
     unsigned int drawers;
     unsigned int books;
     unsigned int sockets;

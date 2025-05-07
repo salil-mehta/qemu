@@ -27,6 +27,7 @@
 #include "hw/sysbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "qom/object.h"
+#include "qapi/error.h"
 
 /*
  * Maximum number of possible interrupts, determined by the GIC architecture.
@@ -345,28 +346,6 @@ struct ARMGICv3CommonClass {
 
 void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
                               const MemoryRegionOps *ops);
-/**
- * Structure used by GICv3 CPU hotplug notifier
- */
-typedef struct GICv3CPUHotplugInfo {
-    DeviceState *gic; /* GICv3State */
-    CPUState *cpu;
-    bool cpu_plugging; /* CPU being plugged or unplugged */
-} GICv3CPUHotplugInfo;
-
-/**
- * gicv3_cpuhp_notifier
- *
- * Returns CPU hotplug notifier which could be used to update GIC about any
- * CPU hot(un)plug events.
- *
- * Returns: Notifier initialized with CPU Hot(un)plug update function
- */
-static inline Notifier *gicv3_cpuhp_notifier(DeviceState *dev)
-{
-    GICv3State *s = ARM_GICV3_COMMON(dev);
-    return &s->cpu_update_notifier;
-}
 
 /**
  * gicv3_class_name
@@ -379,33 +358,54 @@ static inline Notifier *gicv3_cpuhp_notifier(DeviceState *dev)
 const char *gicv3_class_name(void);
 
 /**
- * gicv3_cpu_accessible
+ * gicv3_gicc_accessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU whose GICC accessibility is being queried
  *
- * The `GICv3CPUState` can become inaccessible if the associated `CPUState` is
- * either unavailable or in a disabled state. This state is independent of the
- * KVM VGIC and is not compliant with ARM CPU architecture (i.e. there is no
- * way we can explicitly enable/disable ARM GIC CPU interface). This change
- * is specific to QOM only.
- *
- * Returns: True if accessible otherwise False
+ * Returns: true if the GICC interface for vCPU @cpu is accessible.
+ * Uses QOM property lookup for "gicc-accessible[%d]".
  */
-static inline bool gicv3_cpu_accessible(GICv3CPUState *gicc)
+static inline bool gicv3_gicc_accessible(Object *obj, int cpu)
 {
-    assert(gicc);
-    return gicc->gicc_accessible;
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    Error *local_err = NULL;
+
+    bool value = object_property_get_bool(obj, propname, &local_err);
+    if (local_err) {
+        error_report_err(local_err);
+        return false;
+    }
+
+    return value;
 }
 
 /**
- * gicv3_set_cpustate
+ * gicv3_mark_gicc_accessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU to mark as GICC-accessible
+ * @errp: Pointer to an Error* for reporting failures
  *
- * Sets `GICv3CPUState` with associated `CPUState` and marks as accessible and
- * available for use
+ * Marks GICv3CPUState::gicc_accessible as accessible and available for use.
  */
-static inline void gicv3_set_cpustate(GICv3CPUState *s,
-                                      CPUState *cpu,
-                                      bool gicc_accessible)
+static inline void
+gicv3_mark_gicc_accessible(Object *obj, int cpu, Error **errp)
 {
-    s->cpu = cpu;
-    s->gicc_accessible = gicc_accessible;
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    object_property_set_bool(obj, propname, true, errp);
+}
+
+/**
+ * gicv3_mark_gicc_inaccessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU to mark as GICC-inaccessible
+ * @errp: Pointer to an Error* for reporting failures
+ *
+ * Marks GICv3CPUState::gicc_accessible as inaccessible and unavailable for use.
+ */
+static inline void
+gicv3_mark_gicc_inaccessible(Object *obj, int cpu, Error **errp)
+{
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    object_property_set_bool(obj, propname, false, errp);
 }
 #endif

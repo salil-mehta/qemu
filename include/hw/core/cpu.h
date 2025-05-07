@@ -574,13 +574,14 @@ struct CPUState {
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
 
+
+    DeviceListener cpu_listener;
+
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.
      */
     char neg_align[-sizeof(CPUNegativeOffsetState) % 16] QEMU_ALIGNED(16);
     CPUNegativeOffsetState neg;
-
-    DeviceListener cpu_listener;
 };
 
 /* Validate placement of CPUNegativeOffsetState. */
@@ -804,6 +805,17 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
  *          The user should g_free() the string once no longer needed.
  */
 char *cpu_model_from_type(const char *typename);
+
+/**
+ * cputype_from_typename:
+ * @typename: The CPU type name
+ *
+ * Extract the exact CPU Type from the type name. The type
+ * name is combination of the CPU model and the exact CPU type.
+ *
+ * Returns: exact const CPU type name or NULL
+ */
+const char *cputype_from_typename(const char *typename);
 
 /**
  * cpu_create:

@@ -242,16 +242,15 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 }
 
 DeviceState *
-qdev_find_standby_device(const QDict *opts, bool from_json, Error **errp)
+qdev_find_device(const QDict *opts, Error **errp)
 {
     ERRP_GUARD();
     DeviceListener *listener;
     DeviceState *dev;
 
     QTAILQ_FOREACH(listener, &device_listeners, link) {
-        if (listener->find_standby_device) {
-            dev = listener->find_standby_device(listener, opts, from_json,
-                                                errp);
+        if (listener->find_device) {
+            dev = listener->find_device(listener, opts, errp);
             if (*errp) {
                 return NULL;
             } else if (dev) {
@@ -344,6 +343,104 @@ void qdev_assert_realized_properly(void)
 {
     object_child_foreach_recursive(object_get_root(),
                                    qdev_assert_realized_properly_cb, NULL);
+}
+
+bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
+{
+    g_assert(dev);
+
+    if (bus) {
+        error_setg(errp, "Device %s 'disable' operation not supported",
+                   object_get_typename(OBJECT(dev)));
+        return false;
+    } else {
+        /* for devices like cpu */
+        g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
+    }
+
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
+                                    errp));
+}
+
+void qdev_sync_disable(DeviceState *dev, Error **errp)
+{
+    PowerStateHandler *handler;
+
+    g_assert(dev);
+
+    handler = powerstate_handler(dev);
+    g_assert(handler);
+
+    /*
+     * Administrative disable triggered either after OSPM completes _EJx
+     * (post Notify(..., 0x03)), or due to lack of async shutdown support.
+     *
+     * Device may still appear in ACPI namespace but remains disabled at
+     * the platform level. Guest cannot re-enable it until host allows.
+     */
+
+    /* Perform operational shutdown */
+    handle_poweroff(handler, dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* Mark the device administratively disabled */
+    qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
+    smp_wmb();
+
+    /* Remove from migration stream */
+    if (qdev_get_vmsd(dev)) {
+        vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
+    }
+}
+
+bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
+{
+    g_assert(dev);
+
+    if (bus) {
+        error_setg(errp, "Device %s does not supports 'enable' operation",
+                   object_get_typename(OBJECT(dev)));
+        return false;
+    } else {
+        /* for devices like cpu */
+        g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
+    }
+
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "enabled",
+                                    errp));
+}
+
+int qdev_get_admin_power_state(DeviceState *dev)
+{
+    DeviceClass *dc;
+
+    if (!dev) {
+        return DEVICE_ADMIN_POWER_STATE_REMOVED;
+    }
+
+    dc = DEVICE_GET_CLASS(dev);
+    if (dc->admin_power_state_supported) {
+        return object_property_get_enum(OBJECT(dev), "admin_power_state",
+                                        "DevicePowerState", NULL);
+    }
+
+    return DEVICE_ADMIN_POWER_STATE_ENABLED;
+}
+
+bool qdev_check_enabled(DeviceState *dev)
+{
+   /*
+    * if device supports power state transitions, check if it is not in
+    * 'disabled' state.
+    */
+    DeviceAdminPowerState state = qdev_get_admin_power_state(dev);
+    if (state != DEVICE_ADMIN_POWER_STATE_ENABLED) {
+        return false;
+    }
+
+    return true;
 }
 
 bool qdev_machine_modified(void)
@@ -671,6 +768,105 @@ static bool device_get_hotplugged(Object *obj, Error **errp)
     return dev->hotplugged;
 }
 
+static int device_get_admin_power_state(Object *obj, Error **errp)
+{
+    return DEVICE(obj)->admin_power_state;
+}
+
+static void
+device_set_admin_power_state(Object *obj, int new_state, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    DeviceAdminPowerState old_state;
+    PowerStateHandlerClass *pshc;
+    PowerStateHandler *handler;
+
+    warn_report("[%s] device-ID=%s", __func__, dev->id);
+
+    if (!dc->admin_power_state_supported) {
+        error_setg(errp, "Device '%s' admin power state change not supported",
+                   object_get_typename(obj));
+        return;
+    }
+
+    handler = powerstate_handler(dev);
+    g_assert(handler);
+
+    old_state = qatomic_read(&dev->admin_power_state);
+
+    switch (new_state) {
+    case DEVICE_ADMIN_POWER_STATE_DISABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_DISABLED) {
+            break;
+        }
+
+        /*
+         * Device is not yet realized. Only update the default admin state;
+         * operational state transition is not applicable here.
+         */
+        if (!dev->realized) {
+            qatomic_set(&dev->admin_power_state,
+                        DEVICE_ADMIN_POWER_STATE_DISABLED);
+            smp_wmb();
+            break;
+        }
+
+        /*
+         * Operational state transition triggered by administrative action.
+         * Powering off the realized device either synchronously or via OSPM.
+         */
+        pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
+        if (pshc->poweroff_request && phase_check(PHASE_MACHINE_READY)) {
+            /* Graceful shutdown via guest coordination */
+            handle_poweroff_request(handler, dev, errp);
+        } else {
+            /* Immediate shutdown within QEMU synchronously */
+            qdev_sync_disable(dev, errp);
+        }
+        if (*errp) {
+            return;
+        }
+
+        break;
+    }
+    case DEVICE_ADMIN_POWER_STATE_ENABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_ENABLED) {
+            break;
+        }
+
+        /*
+         * Operational state transition triggered by administrative action.
+         * Powering on the device and restoring migration registration.
+         */
+        handle_poweron(handler, dev, errp);
+        if (*errp) {
+            return;
+        }
+
+        if (qdev_get_vmsd(dev)) {
+            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
+                                               VMSTATE_INSTANCE_ID_ANY,
+                                               qdev_get_vmsd(dev), dev,
+                                               dev->instance_id_alias,
+                                               dev->alias_required_for_version,
+                                               errp) < 0) {
+                return;
+            }
+        }
+
+        qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_ENABLED);
+        smp_wmb();
+        break;
+    }
+    default: {
+        error_setg(errp, "Invalid admin power state %d for device '%s'",
+                   new_state, dev->id);
+        break;
+    }
+    }
+}
+
 static void device_initfn(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
@@ -682,6 +878,7 @@ static void device_initfn(Object *obj)
 
     dev->instance_id_alias = -1;
     dev->realized = false;
+    dev->admin_power_state = DEVICE_ADMIN_POWER_STATE_ENABLED;
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);
@@ -769,6 +966,15 @@ device_vmstate_if_get_id(VMStateIf *obj)
     return qdev_get_dev_path(dev);
 }
 
+static const QEnumLookup device_admin_power_state_lookup = {
+    .array = (const char *const[]) {
+        [DEVICE_ADMIN_POWER_STATE_ENABLED]  = "enabled",
+        [DEVICE_ADMIN_POWER_STATE_REMOVED]  = "removed",
+        [DEVICE_ADMIN_POWER_STATE_DISABLED] = "disabled",
+    },
+    .size = DEVICE_ADMIN_POWER_STATE__MAX,
+};
+
 static void device_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
@@ -803,6 +1009,11 @@ static void device_class_init(ObjectClass *class, void *data)
                                    device_get_hotpluggable, NULL);
     object_class_property_add_bool(class, "hotplugged",
                                    device_get_hotplugged, NULL);
+    object_class_property_add_enum(class, "admin_power_state",
+                                   "DevicePowerState",
+                                   &device_admin_power_state_lookup,
+                                   device_get_admin_power_state,
+                                   device_set_admin_power_state);
     object_class_property_add_link(class, "parent_bus", TYPE_BUS,
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }

@@ -1108,6 +1108,88 @@
              'allow-preconfig': true }
 
 ##
+# @CPUOperationalState:
+#
+# Guest-visible operational state of the CPU.
+# This reflects runtime status such as guest online/offline status or
+# suspended state (e.g., CPU halted, suspended in WFI loop).
+#
+# .. note::
+#    This field is read-only. It is derived by QEMU from runtime information.
+# CPU execution state (or architectural code). It cannot be set
+# by management tools or user commands.
+#
+# @on: CPU is online and executing
+# @standby: CPU is idle or suspended (e.g., WFI)
+# @off: CPU is guest-offlined or halted
+##
+{ 'enum': 'CPUOperationalState',
+  'data': ['on', 'standby', 'off'] }
+
+##
+# @CPUPowerState:
+#
+# Host-side administrative power state of the CPU device.
+# Controls guest visibility and lifecycle.
+#
+# @enabled: CPU is administratively enabled (can be used by guest)
+# @disabled: CPU is administratively disabled (guest-visible but unusable)
+# @removed: CPU is logically removed (not visible to guest)
+##
+{ 'enum': 'CPUPowerState',
+  'data': ['enabled', 'disabled', 'removed'] }
+
+##
+# @CPUPowerStateInfo:
+#
+# CPU status combining both administrative and operational/runtime state.
+#
+# @id: CPU index
+# @core-id: Core ID (optional)
+# @socket-id: Socket ID (optional)
+# @cluster-id: Cluster ID (optional)
+# @thread-id: Thread ID (optional)
+# @node-id: NUMA node ID (optional)
+# @drawer-id: Drawer ID (optional)
+# @book-id: Book ID (optional)
+# @die-id: Die ID (optional)
+# @module-id: Module ID (optional)
+# @vcpus-count: Number of threads under this logical CPU (optional)
+# @qom-path: QOM object path (optional)
+# @admin-state: Administrative power state (enabled/disabled/removed)
+# @oper-state: Guest-visible runtime power state (on/standby/off)
+##
+{ 'struct': 'CPUPowerStateInfo',
+  'data': {
+    'id': 'int',
+    '*core-id': 'int',
+    '*socket-id': 'int',
+    '*cluster-id': 'int',
+    '*thread-id': 'int',
+    '*node-id': 'int',
+    '*drawer-id': 'int',
+    '*book-id': 'int',
+    '*die-id': 'int',
+    '*module-id': 'int',
+    '*vcpus-count': 'int',
+    '*qom-path': 'str',
+    'admin-state': 'CPUPowerState',
+    'oper-state': 'CPUOperationalState'
+  } }
+
+##
+# @query-cpus-power-state:
+#
+# Returns all CPUs and their power state info, combining host policy and
+# runtime guest status. This is useful for debugging vCPU hotplug,
+# suspend/resume, admin power states or offline state flows.
+#
+# Returns: a list of @CPUPowerStateInfo
+##
+{ 'command': 'query-cpus-power-state',
+  'returns': ['CPUPowerStateInfo'] }
+
+##
 # @set-numa-node:
 #
 # Runtime equivalent of '-numa' CLI option, available at preconfigure
@@ -1676,6 +1758,8 @@
 #
 # @cpus: number of virtual CPUs in the virtual machine
 #
+# @disabledcpus: number of additional present but disabled(or offline) CPUs
+#
 # @maxcpus: maximum number of hotpluggable virtual CPUs in the virtual
 #     machine
 #
@@ -1699,6 +1783,7 @@
 ##
 { 'struct': 'SMPConfiguration', 'data': {
      '*cpus': 'int',
+     '*disabledcpus': 'int',
      '*drawers': 'int',
      '*books': 'int',
      '*sockets': 'int',

@@ -129,22 +129,25 @@ static int vmstate_gicv3_cpu_pre_load(void *opaque)
 static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
 {
     GICv3CPUState *gcs = opaque;
+    GICv3State *gic = gcs->gic;
     CPUState *cs = gcs->cpu;
 
     /*
-     * If the destination QEMU has more *enabled* vCPUs than the source, we can
-     * either *fail* the migration or override the destination QEMU’s vCPU
-     * configuration to match the source. Since it is safe to override the
-     * `CPUState` of the extra *enabled* vCPUs at the destination, we have
-     * adopted the latter approach as a mitigation for the mismatch.
-     * RFC: Question: any suggestions on this are welcome?
+     * if the destination QEMU has more *enabled* vCPUs than the source, we can
+     * either fail the migration or override the destination's vCPU config to
+     * match the source. Since it is safe to override the `CPUState` of extra
+     * *enabled* vCPUs at the destination, we adopt the latter approach as a
+     * mitigation for the mismatch.
      */
-    if (cs && DEVICE(cs)->realized && !gicv3_cpu_accessible(gcs)) {
-        warn_report("Found CPU %d enabled, for incoming *disabled* GICC State",
+    if (qdev_check_enabled(DEVICE(cs)) &&
+        !gicv3_gicc_accessible(OBJECT(gic), cs->cpu_index)) {
+        warn_report("CPU %d is active, but its incoming GICC state is marked"
+                    "inaccessible", cs->cpu_index);
+        warn_report("Putting CPU %d into standby to match the migrated state",
                     cs->cpu_index);
-        warn_report("*Disabling* CPU %d, to match the incoming migrated state",
-                    cs->cpu_index);
-        qdev_unrealize(DEVICE(cs));
+
+        /* 'disable' this vCPU to reflect the incoming state */
+        qdev_disable(DEVICE(cs), NULL, &error_fatal);
     }
 
     return 0;
@@ -391,62 +394,6 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
     }
 }
 
-static int arm_gicv3_get_proc_num(GICv3State *s, CPUState *cpu)
-{
-    uint64_t mp_affinity;
-    uint64_t gicr_typer;
-    uint64_t cpu_affid;
-    int i;
-
-    mp_affinity = object_property_get_uint(OBJECT(cpu), "mp-affinity", NULL);
-    /* match the cpu mp-affinity to get the gic cpuif number */
-    for (i = 0; i < s->num_cpu; i++) {
-        gicr_typer = s->cpu[i].gicr_typer;
-        cpu_affid = (gicr_typer >> 32) & 0xFFFFFF;
-        if (cpu_affid == mp_affinity) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
-{
-    GICv3CPUHotplugInfo *gic_info = (GICv3CPUHotplugInfo *)data;
-    CPUState *cpu = gic_info->cpu;
-    ////ARMGICv3CommonClass *agcc;
-    int gic_cpuif_num;
-    GICv3State *s;
-
-    s = ARM_GICV3_COMMON(gic_info->gic);
-    //agcc = ARM_GICV3_COMMON_GET_CLASS(s);
-
-    /* this shall get us mapped GICv3 CPU interface corresponding to MPIDR */
-    gic_cpuif_num = arm_gicv3_get_proc_num(s, cpu);
-    if (gic_cpuif_num < 0) {
-        error_report("Failed to associate cpu %d with any GIC cpuif",
-                     cpu->cpu_index);
-        abort();
-    }
-
-    /* Update the GICv3 CPU interface accessibiltiy accordingly */
-    gicv3_set_cpustate(&s->cpu[gic_cpuif_num], cpu, gic_info->cpu_plugging);
-
-    if (!gic_info->cpu_plugging) {
-        return;
-    }
-
-    /* re-stitch the GICv3 CPU interface to this new vCPU */
-    //gicv3_set_gicv3state(cpu, &s->cpu[gic_cpuif_num]);
-
-    /*
-     * define and register the GICv3 CPU interface `system registers` for
-     * this new vCPU being hotplugged
-     */
-    //agcc->init_cpu_reginfo(cpu);
-}
-
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 {
     GICv3State *s = ARM_GICV3_COMMON(dev);
@@ -521,11 +468,29 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         uint64_t cpu_affid;
 
         /*
-         * Accordingly, set the QOM `GICv3CPUState` as either accessible or
-         * inaccessible based on the `CPUState` of the associated QOM vCPU.
+         * Ref: Arm Generic Interrupt Controller Architecture Specification
+         * (GIC Architecture version 3 and version 4), IHI0069H_b,
+         * Section 11.1: Power Management
+         * https://developer.arm.com/documentation/ihi0069
+         *
+         * According to this specification, the CPU interface and the
+         * Processing Element (PE) must reside in the same power domain.
+         * Therefore, when a CPU/PE is powered off, its corresponding CPU
+         * interface must also be in the off state or in a quiescent state—
+         * depending on the state of the associated Redistributor.
+         *
+         * The Redistributor may reside in a separate power domain and may
+         * remain powered even when the associated PE is turned off.
+         *
+         * Accessing the GIC CPU interface while the PE is powered down can
+         * lead to UNPREDICTABLE behavior.
+         *
+         * Accordingly, the QOM object `GICv3CPUState` should be marked as
+         * either accessible or inaccessible based on the power state of the
+         * associated `CPUState` vCPU.
          */
-        gicv3_set_cpustate(&s->cpu[i], cpu, DEVICE(cpu)->realized);
-
+        s->cpu[i].gicc_accessible = qdev_check_enabled(DEVICE(cpu));
+        s->cpu[i].cpu = cpu;
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */
         gicv3_set_gicv3state(cpu, &s->cpu[i]);
@@ -570,8 +535,6 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         cpuidx += s->redist_region_count[i];
         s->cpu[cpuidx - 1].gicr_typer |= GICR_TYPER_LAST;
     }
-
-    s->cpu_update_notifier.notify = arm_gicv3_cpu_update_notifier;
 
     s->itslist = g_ptr_array_new();
 }

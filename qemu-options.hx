@@ -280,12 +280,13 @@ SRST
 ERST
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
-    "-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets]\n"
-    "               [,dies=dies][,clusters=clusters][,modules=modules][,cores=cores]\n"
-    "               [,threads=threads]\n"
+    "-smp [[cpus=]n][,disabledcpus=disabledcpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
+    "               [,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules]\n"
+    "               [,cores=cores][,threads=threads]\n"
     "                set the number of initial CPUs to 'n' [default=1]\n"
+    "                disabledcpus= additional number of present but administratively disabled CPUs\n"
     "                maxcpus= maximum number of total CPUs, including\n"
-    "                offline CPUs for hotplug, etc\n"
+    "                disabled CPUs for hotplug, etc\n"
     "                drawers= number of drawers on the machine board\n"
     "                books= number of books in one drawer\n"
     "                sockets= number of sockets in one book\n"
@@ -305,14 +306,30 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      For a particular machine type board, an expected CPU topology hierarchy\n"
     "      can be defined through the supported sub-option. Unsupported parameters\n"
     "      can also be provided in addition to the sub-option, but their values\n"
-    "      must be set as 1 in the purpose of correct parsing.\n",
+    "      must be set as 1 in the purpose of correct parsing.\n"
+    "                                                         \n"
+    "      Administratively disabled CPUs: Some machine types do not support vCPU hotplug\n"
+    "      but their CPUs can be marked disabled (powered off) and hidden from the Guest OS.\n"
+    "      Later, such CPUs can be powered on through administrative action via QMP/HMP.\n"
+    "      This is akin to CPU hotplug, but with a difference that all disabled CPUs are\n"
+    "      *present* at boot time. Meant for Architectures like ARM machines which do not\n"
+    "      support architectural CPU hotplug.\n",
     QEMU_ARCH_ALL)
 SRST
-``-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
-    Simulate a SMP system with '\ ``n``\ ' CPUs initially present on
-    the machine type board. On boards supporting CPU hotplug, the optional
-    '\ ``maxcpus``\ ' parameter can be set to enable further CPUs to be
-    added at runtime. When both parameters are omitted, the maximum number
+``-smp [[cpus=]n][,disabledcpus=disabledcpus][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
+    Simulate a SMP system with '\ ``n``\ ' CPUs initially present & active on
+    the machine type board. Furthermore, on architectures that support changing
+    the administrative power state of CPUs, optional '\ ``disabledcpus``\ '
+    parameter specifies *additional* CPUs that are present in firmware (e.g., ACPI)
+    but are administratively disabled (i.e., not usable by the guest at boot time).
+
+    This is different from CPU hotplug where additional CPUs are not even present
+    in the system description. Administratively disabled CPUs appear in ACPI tables
+    but cannot be used until explicitly re-enabled via QMP/HMP or the deviceset API.
+
+    On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
+    can be set to enable further CPUs to be added at runtime. When both
+    '\ ``n``\ ' & '\ ``maxcpus``\ ' parameters are omitted, the maximum number
     of CPUs will be calculated from the provided topology members and the
     initial CPU count will match the maximum number. When only one of them
     is given then the omitted one will be set to its counterpart's value.
@@ -326,9 +343,9 @@ SRST
     parameters can be specified. Machines may only support a subset of the
     parameters and different machines may have different subsets supported
     which vary depending on capacity of the corresponding CPU targets. So
-    for a particular machine type board, an expected topology hierarchy can
-    be defined through the supported sub-option. Unsupported parameters can
-    also be provided in addition to the sub-option, but their values must be
+    for a particular machine type board, an expected CPU topology hierarchy
+    can be defined through the supported sub-option. Unsupported parameters
+    can also be provided in addition to the sub-option, but their values must be
     set as 1 in the purpose of correct parsing.
 
     Either the initial CPU count, or at least one of the topology parameters
@@ -381,6 +398,11 @@ SRST
 
     Note: The cluster topology will only be generated in ACPI and exposed
     to guest if it's explicitly specified in -smp.
+
+    Note: Administratively disabled CPUs (via 'disabledcpus=') are especially
+    useful for platforms like ARM that lack native CPU hotplug support.
+    These CPUs will appear to the guest as unavailable, and any attempt to
+    bring them online must go through QMP/HMP commands like 'device_set'.
 ERST
 
 DEF("numa", HAS_ARG, QEMU_OPTION_numa,
@@ -1185,6 +1207,40 @@ SRST
     ``aw-bits=val`` (val between 32 and 64, default depends on machine)
         This decides the address width of the IOVA address space.
 
+ERST
+
+DEF("deviceset", HAS_ARG, QEMU_OPTION_deviceset,
+    "-deviceset driver[,prop[=value]][,...]\n"
+    "                Set administrative power state of an existing device.\n"
+    "                Does not hotplug a new device. Can disable or enable\n"
+    "                devices (such as CPUs) at boot based on policy.\n"
+    "                Example:\n"
+    "                    -deviceset host-arm-cpu,core-id=2,state=disabled\n"
+    "                Use '-deviceset help' for supported drivers\n"
+    "                Use '-deviceset driver,help' for driver-specific properties\n",
+    QEMU_ARCH_ALL)
+SRST
+``-deviceset driver[,prop[=value]][,...]``
+    Configure an existing device's administrative power state or properties.
+
+    Unlike ``-device``, this option does not create a new device. Instead,
+    it sets startup properties (such as administrative power state) for
+    a device already declared via -smp or other machine configuration.
+
+    Example:
+        -smp cpus=4
+        -deviceset host-arm-cpu,core-id=2,state=disabled
+
+    The above disables CPU core 2 at boot using administrative offlining.
+    The guest may later re-enable the core (if permitted by platform policy).
+
+    ``state=enabled|disabled``
+        Sets the administrative state of the device:
+        - ``enabled``: device is made available at boot
+        - ``disabled``: device is administratively disabled and powered off
+
+    Use ``-deviceset help`` to view all supported drivers.
+    Use ``-deviceset driver,help`` for property-specific help.
 ERST
 
 DEF("name", HAS_ARG, QEMU_OPTION_name,

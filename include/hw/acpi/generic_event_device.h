@@ -63,6 +63,7 @@
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/ghes.h"
 #include "hw/acpi/cpu.h"
+#include "hw/acpi/cpu_ospm_interface.h"
 #include "qom/object.h"
 
 #define ACPI_POWER_BUTTON_DEVICE "PWRB"
@@ -90,17 +91,19 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 #define GED_DEVICE      "GED"
 #define AML_GED_EVT_REG "EREG"
 #define AML_GED_EVT_SEL "ESEL"
-#define AML_GED_EVT_CPU_SCAN_METHOD "\\_SB.GED.CSCN"
+#define AML_GED_EVT_CPUHP_SCAN_METHOD "\\_SB.GED.CSCN"
+#define AML_GED_EVT_CPUPS_SCAN_METHOD "\\_SB.GED.PSCN"  /* Power State Scan */
 
 /*
  * Platforms need to specify the GED event bitmap
  * to describe what kind of events they want to support
  * through GED.
  */
-#define ACPI_GED_MEM_HOTPLUG_EVT   0x1
-#define ACPI_GED_PWR_DOWN_EVT      0x2
-#define ACPI_GED_NVDIMM_HOTPLUG_EVT 0x4
-#define ACPI_GED_CPU_HOTPLUG_EVT    0x8
+#define ACPI_GED_MEM_HOTPLUG_EVT     0x1
+#define ACPI_GED_PWR_DOWN_EVT        0x2
+#define ACPI_GED_NVDIMM_HOTPLUG_EVT  0x4
+#define ACPI_GED_CPU_POWERSTATE_EVT  0x8
+#define ACPI_GED_CPU_HOTPLUG_EVT     0x10
 
 typedef struct GEDState {
     MemoryRegion evt;
@@ -114,13 +117,15 @@ struct AcpiGedState {
     MemoryRegion container_memhp;
     CPUHotplugState cpuhp_state;
     MemoryRegion container_cpuhp;
+    AcpiCpuOspmState cpuospm_state;
+    MemoryRegion container_cpups;
     GEDState ged_state;
     uint32_t ged_event_bitmap;
     qemu_irq irq;
     AcpiGhesState ghes_state;
 };
 
-void build_ged_aml(Aml *table, const char* name, HotplugHandler *hotplug_dev,
+void build_ged_aml(Aml *table, const char* name, DeviceState *acpi_ged,
                    uint32_t ged_irq, AmlRegionSpace rs, hwaddr ged_base);
 void acpi_dsdt_add_power_button(Aml *scope);
 

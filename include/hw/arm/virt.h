@@ -79,6 +79,7 @@ enum {
     VIRT_ACPI_GED,
     VIRT_NVDIMM_ACPI,
     VIRT_CPUHP_ACPI,
+    VIRT_CPUPS_ACPI,
     VIRT_PVTIME,
     VIRT_LOWMEMMAP_LAST,
 };
@@ -188,7 +189,7 @@ struct VirtMachineState {
     char *oem_table_id;
     bool ns_el2_virt_timer_irq;
     NotifierList cpuhp_notifiers;
-    DeviceListener cpu_listener;
+    DeviceListener device_listener;
 };
 
 #define VIRT_ECAM_ID(high) (high ? VIRT_HIGH_PCIE_ECAM : VIRT_PCIE_ECAM)
@@ -268,6 +269,7 @@ static inline CPUArchId *virt_get_possible_cpu_arch_id(int cpu_index)
     return &ms->possible_cpus->cpus[cpu_index];
 }
 
+#if 0
 static inline void virt_update_gic(VirtMachineState *vms,
                                    CPUState *cs,
                                    bool plugging)
@@ -281,4 +283,5 @@ static inline void virt_update_gic(VirtMachineState *vms,
     /* notify gic to stitch GICC to this new cpu */
     notifier_list_notify(&vms->cpuhp_notifiers, &gic_info);
 }
+#endif
 #endif /* QEMU_ARM_VIRT_H */
