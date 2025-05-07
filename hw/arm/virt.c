@@ -789,6 +789,7 @@ const int timer_irq[] = {
     [GTIMER_SEC]  = ARCH_TIMER_S_EL1_IRQ,
 };
 
+#if 0
 static void unwire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
 {
     MachineState *ms = MACHINE(vms);
@@ -827,6 +828,7 @@ static void unwire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
                                         cpu + irq * max_cpus);
     }
 }
+#endif
 
 static void wire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
 {
