@@ -3206,7 +3206,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     /* reference this new object so that we dont loose it on future unplug */
     object_ref(OBJECT(cpu_slot->cpu));
 
-    virt_cpu_set_properties(OBJECT(cs), errp);
+    //virt_cpu_set_properties(OBJECT(cs), errp);
 
     /*
      * update the GIC CPU interface with newly plugged vCPU and wire
