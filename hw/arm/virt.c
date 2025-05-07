@@ -704,7 +704,7 @@ static inline DeviceState *create_acpi_ged(VirtMachineState *vms)
 
     return dev;
 }
-
+#if 0
 static void virt_add_gic_cpuhp_notifier(VirtMachineState *vms)
 {
     MachineClass *mc = MACHINE_GET_CLASS(vms);
@@ -714,6 +714,7 @@ static void virt_add_gic_cpuhp_notifier(VirtMachineState *vms)
         notifier_list_add(&vms->cpuhp_notifiers, cpuhp_notifier);
     }
 }
+#endif
 
 static void create_its(VirtMachineState *vms)
 {
@@ -992,7 +993,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     }
 
     /* add GIC CPU hot(un)plug update notifier */
-    virt_add_gic_cpuhp_notifier(vms);
+    //virt_add_gic_cpuhp_notifier(vms);
 }
 
 static void create_uart(const VirtMachineState *vms, int uart,

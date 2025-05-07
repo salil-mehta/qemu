@@ -391,6 +391,7 @@ void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
     }
 }
 
+#if 0
 static int arm_gicv3_get_proc_num(GICv3State *s, CPUState *cpu)
 {
     uint64_t mp_affinity;
@@ -446,6 +447,7 @@ static void arm_gicv3_cpu_update_notifier(Notifier *notifier, void * data)
      */
     //agcc->init_cpu_reginfo(cpu);
 }
+#endif
 
 static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
 {
@@ -571,7 +573,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         s->cpu[cpuidx - 1].gicr_typer |= GICR_TYPER_LAST;
     }
 
-    s->cpu_update_notifier.notify = arm_gicv3_cpu_update_notifier;
+    //s->cpu_update_notifier.notify = arm_gicv3_cpu_update_notifier;
 
     s->itslist = g_ptr_array_new();
 }

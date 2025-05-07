@@ -268,6 +268,7 @@ static inline CPUArchId *virt_get_possible_cpu_arch_id(int cpu_index)
     return &ms->possible_cpus->cpus[cpu_index];
 }
 
+#if 0
 static inline void virt_update_gic(VirtMachineState *vms,
                                    CPUState *cs,
                                    bool plugging)
@@ -281,4 +282,5 @@ static inline void virt_update_gic(VirtMachineState *vms,
     /* notify gic to stitch GICC to this new cpu */
     notifier_list_notify(&vms->cpuhp_notifiers, &gic_info);
 }
+#endif
 #endif /* QEMU_ARM_VIRT_H */
