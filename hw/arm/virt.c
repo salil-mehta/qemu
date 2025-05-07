@@ -980,7 +980,7 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
      * CPU's inputs.
      */
     for (i = 0; i < max_cpus; i++) {
-        wire_gic_cpu_irqs(vms, qemu_get_cpu(i));
+        wire_gic_cpu_irqs(vms, qemu_get_possible_cpu(i));
     }
 
     fdt_add_gic_node(vms);
