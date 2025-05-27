@@ -574,13 +574,14 @@ struct CPUState {
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
 
+
+    DeviceListener cpu_listener;
+
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.
      */
     char neg_align[-sizeof(CPUNegativeOffsetState) % 16] QEMU_ALIGNED(16);
     CPUNegativeOffsetState neg;
-
-    DeviceListener cpu_listener;
 };
 
 /* Validate placement of CPUNegativeOffsetState. */

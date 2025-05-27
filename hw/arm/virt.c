@@ -888,7 +888,6 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     SysBusDevice *gicbusdev;
     const char *gictype;
     int i;
-    unsigned int smp_cpus = ms->smp.cpus;
     unsigned int max_cpus = ms->smp.max_cpus;
     uint32_t nb_redist_regions = 0;
     int revision;
@@ -1840,7 +1839,7 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
     VirtMachineState *vms = container_of(listener, VirtMachineState,
                                          cpu_listener);
     int cpu_id, sock_vcpu_num, clus_vcpu_num, core_vcpu_num;
-    int64_t socket_id, cluster_id, core_id, thread_id;
+    int64_t socket_id=0, cluster_id=0, core_id=0, thread_id=0;
     MachineState *ms = MACHINE(vms);
     ObjectClass *oc;
     CPUState *cpu;
@@ -1849,7 +1848,8 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
 
     /* make sure we are dealing with supported ARM cpu type */
     oc = cpu_class_by_name(TYPE_ARM_CPU,
-                           qdict_get_try_str(device_opts, "driver"));
+                           cpu_model_from_type(qdict_get_try_str(device_opts,
+                           "driver")));
     if (!oc) {
         return NULL;
     }
@@ -1861,10 +1861,18 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
         core_id = qdict_get_try_int(device_opts, "core-id", 0);
         thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
     } else {
-        socket_id = strtol(qdict_get_str(device_opts, "socket-id", 0);
-        cluster_id = strtol(qdict_get_str(device_opts, "cluster-id", 0);
-        core_id = strtol(qdict_get_str(device_opts, "core-id"), NULL, 0);
-        thread_id = strtol(qdict_get_str(device_opts, "thread-id", 0);
+        if ((qdict_get_try_str(device_opts,"socket-id"))) {
+            socket_id = strtol(qdict_get_try_str(device_opts, "socket-id"), NULL, 10);
+        }
+        if ((qdict_get_try_str(device_opts,"cluster-id"))) {
+            cluster_id = strtol(qdict_get_try_str(device_opts, "cluster-id"), NULL, 10);
+        }
+        if ((qdict_get_try_str(device_opts,"core-id"))) {
+            core_id = strtol(qdict_get_try_str(device_opts, "core-id"), NULL, 10);
+        }
+        if ((qdict_get_try_str(device_opts,"thread-id"))) {
+            thread_id = strtol(qdict_get_try_str(device_opts, "thread-id"), NULL, 10);
+        }
     }
 
     /*
@@ -3196,7 +3204,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, dev);
 
     cpu_slot = virt_get_possible_cpu_arch_id(cs->cpu_index);
-    if (cpu_slot->cpu && DEVICE(cpu_slot->cpu)->realized) {
+    if (DEVICE(cs)->realized) {
         error_setg(errp, "cpu(id%d=%d:%d:%d:%d) with arch-id %" PRIu64 " exist",
                    cs->cpu_index, cpu->socket_id, cpu->cluster_id, cpu->core_id,
                    cpu->thread_id, cpu_slot->arch_id);
@@ -3207,7 +3215,7 @@ static void virt_cpu_pre_plug(HotplugHandler *hotplug_dev, DeviceState *dev,
     //object_unref(OBJECT(cpu_slot->cpu));
     //cpu_slot->cpu = CPU(dev);
     /* reference this new object so that we dont loose it on future unplug */
-    object_ref(OBJECT(cpu_slot->cpu));
+    object_ref(OBJECT(cs));
 
     //virt_cpu_set_properties(OBJECT(cs), errp);
 
