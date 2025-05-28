@@ -1832,6 +1832,95 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
+#if 0
+static void virt_check_cpu_params(const QDict *device_opts, bool from_json, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(hotplug_dev);
+    MachineState *ms = MACHINE(hotplug_dev);
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    ARMCPU *cpu = ARM_CPU(dev);
+    CPUState *cs = CPU(dev);
+    CPUArchId *cpu_slot;
+
+    /* check if this is a `pre-plugged` vCPU */
+    if (!dev->hotplugged && !vms->acpi_dev) {
+        return;
+    }
+
+    /* cold- or hot-plugged vCPU handling */
+    if (!vms->acpi_dev) {
+        error_setg(errp, "Can't cold- or hot-plug, GED device doesn't exist");
+        return;
+    }
+
+    if (!dev->hotplugged && !mc->has_hotpluggable_cpus) {
+        error_setg(errp, "CPU coldplug not supported on this machine");
+        return;
+    }
+
+    if (dev->hotplugged && !mc->has_hotpluggable_cpus) {
+        error_setg(errp, "CPU hotplug not supported on this machine");
+        return;
+    }
+
+    /* sanity check the cpu */
+    if (!object_dynamic_cast(OBJECT(cpu), ms->cpu_type)) {
+        error_setg(errp, "Invalid CPU type, expected cpu type: '%s'",
+                   ms->cpu_type);
+        return;
+    }
+
+    if ((cpu->thread_id < 0) || (cpu->thread_id >= ms->smp.threads)) {
+        error_setg(errp, "Invalid thread-id %u specified, correct range 0:%u",
+                   cpu->thread_id, ms->smp.threads - 1);
+        return;
+    }
+
+    if ((cpu->core_id < 0) || (cpu->core_id >= ms->smp.cores)) {
+        error_setg(errp, "Invalid core-id %d specified, correct range 0:%u",
+                   cpu->core_id, ms->smp.cores - 1);
+        return;
+    }
+
+    if ((cpu->cluster_id < 0) || (cpu->cluster_id >= ms->smp.clusters)) {
+        error_setg(errp, "Invalid cluster-id %u specified, correct range 0:%u",
+                   cpu->cluster_id, ms->smp.clusters - 1);
+        return;
+    }
+
+    if ((cpu->socket_id < 0) || (cpu->socket_id >= ms->smp.sockets)) {
+        error_setg(errp, "Invalid socket-id %u specified, correct range 0:%u",
+                   cpu->socket_id, ms->smp.sockets - 1);
+        return;
+    }
+
+    cs->cpu_index = virt_get_cpu_id_from_cpu_topo(ms, dev);
+
+    cpu_slot = virt_get_possible_cpu_arch_id(cs->cpu_index);
+    if (DEVICE(cs)->realized) {
+        error_setg(errp, "cpu(id%d=%d:%d:%d:%d) with arch-id %" PRIu64 " exist",
+                   cs->cpu_index, cpu->socket_id, cpu->cluster_id, cpu->core_id,
+                   cpu->thread_id, cpu_slot->arch_id);
+        return;
+    }
+
+    /* remove the old vCPU & insert the cold-/hot-plugged vCPU in the slot */
+    //object_unref(OBJECT(cpu_slot->cpu));
+    //cpu_slot->cpu = CPU(dev);
+    /* reference this new object so that we dont loose it on future unplug */
+    object_ref(OBJECT(cs));
+
+    //virt_cpu_set_properties(OBJECT(cs), errp);
+
+    /*
+     * update the GIC CPU interface with newly plugged vCPU and wire
+     * the IRQs
+     */
+    //virt_update_gic(vms, cs, true);
+    //wire_gic_cpu_irqs(vms, cs);
+}
+#endif
+
 static DeviceState *
 virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
                       bool from_json, Error **errp)
@@ -1905,6 +1994,12 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
 
     cpu = qemu_get_possible_cpu(cpu_id);
     if (!cpu) {
+        return NULL;
+    }
+    if (DEVICE(cpu)->realized) {
+        error_setg(errp, "cpu(id%d=%ld:%ld:%ld:%ld) with arch-id %" PRIu64 " exist",
+                   cpu->cpu_index, socket_id, cluster_id, core_id, thread_id,
+                   ARM_CPU(cpu)->mp_affinity);
         return NULL;
     }
 
