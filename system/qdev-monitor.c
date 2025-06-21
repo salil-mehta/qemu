@@ -263,9 +263,10 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
 
     dc = DEVICE_CLASS(oc);
     if (!dc->user_creatable ||
-        (phase_check(PHASE_MACHINE_READY) && !dc->hotpluggable)) {
+        (phase_check(PHASE_MACHINE_READY) && !dc->hotpluggable) ||
+        (phase_check(PHASE_MACHINE_READY) && !dc->can_standby)) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
-                   "a pluggable device type");
+                   "a pluggable device type or which can standby/resume");
         return NULL;
     }
 
@@ -756,6 +757,57 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     return ret;
 }
 
+DeviceState *qdev_device_enable(QDict *opts, Error **errp)
+{
+    ERRP_GUARD();
+    DeviceClass *dc;
+    const char *driver, *path;
+    DeviceState *dev = NULL;
+
+    driver = qdict_get_try_str(opts, "driver");
+    if (!driver) {
+        error_setg(errp, QERR_MISSING_PARAMETER, "driver");
+        return NULL;
+    }
+
+    /* check driver exists */
+    dc = qdev_get_device_class(&driver, errp);
+    if (!dc) {
+        error_setg(errp, "driver '%s' not supported", driver);
+        return NULL;
+    }
+
+    /* TBD: we might have to consider bus related handling for other devices */
+
+    if (phase_check(PHASE_MACHINE_READY)) {
+        error_setg(errp, "device '%s' does not support standby/resume at this"
+                   " stage", dev->name);
+        return NULL;
+    }
+
+    if (!migration_is_idle()) {
+        error_setg(errp, "device_add not allowed while migrating");
+        return NULL;
+    }
+
+    dev = qdev_find_standby_device(opts, from_json, errp);
+    if (*errp) {
+        error_setg(errp, "unexpected error in finding standby device %s",
+               driver);
+        return NULL;
+    }
+
+    if (!qdev_realize(dev, bus, errp)) {
+        goto err_del_dev;
+    }
+    return dev;
+
+    qemu_opts_del(opts);
+    qobject_unref(qdict);
+
+    return ret;
+}
+
 #define qdev_printf(fmt, ...) monitor_printf(mon, "%*s" fmt, indent, "", ## __VA_ARGS__)
 
 static void qdev_print_props(Monitor *mon, DeviceState *dev, Property *props,
@@ -892,6 +944,38 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
     object_unref(OBJECT(dev));
 }
 
+void qmp_device_enable(QDict *qdict, QObject **ret_data, Error **errp)
+{
+    QemuOpts *opts;
+    DeviceState *dev;
+
+    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, errp);
+    if (!opts) {
+        return;
+    }
+    if (!monitor_cur_is_qmp() && qdev_device_help(opts)) {
+        qemu_opts_del(opts);
+        return;
+    }
+    dev = qdev_device_enable(opts, errp);
+    if (!dev) {
+        /*
+         * Drain all pending RCU callbacks. This is done because
+         * some bus related operations can delay a device removal
+         * (in this case this can happen if device is added and then
+         * removed due to a configuration error)
+         * to a RCU callback, but user might expect that this interface
+         * will finish its job completely once qmp command returns result
+         * to the user
+         */
+        drain_call_rcu();
+
+        qemu_opts_del(opts);
+        return;
+    }
+    object_unref(OBJECT(dev));
+}
+
 static DeviceState *find_device_state(const char *id, Error **errp)
 {
     Object *obj = object_resolve_path_at(qdev_get_peripheral(), id);
@@ -991,6 +1075,80 @@ void hmp_device_del(Monitor *mon, const QDict *qdict)
     Error *err = NULL;
 
     qmp_device_del(id, &err);
+    hmp_handle_error(mon, err);
+}
+
+void hmp_device_enable(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    qmp_device_enable((QDict *)qdict, NULL, &err);
+    hmp_handle_error(mon, err);
+}
+
+void hmp_device_enable(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    /* TBD: to be replaced by the enable counterpart later */
+    qmp_device_add((QDict *)qdict, NULL, &err);
+    hmp_handle_error(mon, err);
+}
+
+void qdev_standby(DeviceState *dev, Error **errp)
+{
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    StandbyHandler *handler;
+    StandbyHandlerClass *sdc;
+    Error *local_err = NULL;
+
+    /* RFC: TBD: standby blockers - maybe for non-core devices? */
+
+    /*
+     * RFC: we might have to check if the bus supports 'standby' function for
+     * devices on parent bus. For example, what if the parent is a PCIe Bus?
+     * For cpu devices this is not a problem.
+     */
+
+    if (!dc->can_standby) {
+        error_setg(errp, "Device '%s' does not support standby operation",
+                   object_get_typename(OBJECT(dev)));
+        return;
+    }
+
+    if (!migration_is_idle()) {
+        error_setg(errp, "device_disable not allowed while migrating");
+        return;
+    }
+
+    handler = qdev_get_standby_handler(dev);
+    g_assert(handler);
+
+    /* for now, we are only supporting asynchronous disabling */
+    sdc = STANDBY_HANDLER_GET_CLASS(handler);
+    if (sdc->standby_request) {
+        standby_handler_request(handler, dev, &local_err);
+    }
+
+    error_propagate(errp, local_err);
+}
+
+void qmp_device_disable(const char *id, Error **errp)
+{
+    DeviceState *dev = find_device_state(id, errp);
+    if (dev != NULL) {
+        /* TBD: check pending event handling later */
+        qdev_standby(dev, errp);
+    }
+}
+
+void hmp_device_disable(Monitor *mon, const QDict *qdict)
+{
+    const char *id = qdict_get_str(qdict, "id");
+    Error *err = NULL;
+
+    /* TBD: to be replaced by the enable counterpart later */
+    qmp_device_disable(id, &err);
     hmp_handle_error(mon, err);
 }
 

@@ -671,6 +671,73 @@ static bool device_get_hotplugged(Object *obj, Error **errp)
     return dev->hotplugged;
 }
 
+static bool device_get_standby(Object *obj, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    return dev->standby;
+}
+
+static void device_set_standby(Object *obj, bool value, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    StandbyHandler *handler;
+    Error *local_err = NULL;
+
+    assert(dev->realized);
+
+    if (!dc->can_standby) {
+        error_setg(errp, "Device '%s' does not support standby/resume",
+                   object_get_typename(obj));
+        return;
+    }
+
+    if (value && !dev->standby) {
+        qatomic_set(&dev->standby, value);
+        smp_wmb();
+
+        handler = qdev_get_standby_handler(dev);
+        if (handler) {
+            standby_handler_enter(handler, dev, &local_err);
+            if (local_err != NULL) {
+                goto fail;
+            }
+        }
+
+        /* do not migrate the device in disabled state */
+        if (qdev_get_vmsd(dev)) {
+            vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
+        }
+    } else if (!value && dev->standby) {
+        handler = qdev_get_standby_handler(dev);
+        if (handler) {
+             standby_handler_exit(handler, dev, &local_err);
+             if (local_err != NULL) {
+                 goto fail;
+             }
+        }
+
+        if (qdev_get_vmsd(dev)) {
+            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
+                                               VMSTATE_INSTANCE_ID_ANY,
+                                               qdev_get_vmsd(dev), dev,
+                                               dev->instance_id_alias,
+                                               dev->alias_required_for_version,
+                                               &local_err) < 0) {
+                goto fail;
+            }
+        }
+
+        qatomic_store_release(&dev->realized, value);
+    }
+
+    assert(local_err == NULL);
+    return;
+
+fail:
+    error_propagate(errp, local_err);
+}
+
 static void device_initfn(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
@@ -682,6 +749,7 @@ static void device_initfn(Object *obj)
 
     dev->instance_id_alias = -1;
     dev->realized = false;
+    dev->standby = false;
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);
@@ -803,6 +871,8 @@ static void device_class_init(ObjectClass *class, void *data)
                                    device_get_hotpluggable, NULL);
     object_class_property_add_bool(class, "hotplugged",
                                    device_get_hotplugged, NULL);
+    object_class_property_add_bool(class, "standby",
+                                   device_get_standby, device_set_standby);
     object_class_property_add_link(class, "parent_bus", TYPE_BUS,
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }

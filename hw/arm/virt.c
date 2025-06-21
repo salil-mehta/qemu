@@ -89,6 +89,7 @@
 #include "hw/char/pl011.h"
 #include "qemu/guest-random.h"
 #include "qapi/qmp/qdict.h"
+#include "hw/standby.h"
 
 static GlobalProperty arm_virt_compat[] = {
     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
@@ -2006,6 +2007,102 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
     return DEVICE(cpu);
 }
 
+static void
+virt_cpu_resume_standby_exit(StandbyHandler *handler, DeviceState *dev,
+                               Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    MachineState *ms = MACHINE(handler);
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    StandbyHandlerClass *ssc;
+    CPUState *cs = CPU(dev);
+    Error *local_err = NULL;
+
+    if (!mc->has_standby_cpus) {
+        error_setg(errp, "CPU standby/resume not supported on this machine");
+        return;
+    }
+
+    /* send cpu standby exit event (cpu enabled) to guest */
+    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+    ssc->standby_exit(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    if (local_err) {
+        goto fail;
+    }
+
+    qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
+
+    /* update the firmware information for the next boot. */
+    vms->boot_cpus++;
+    if (vms->fw_cfg) {
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
+    }
+
+    return;
+fail:
+    error_propagate(errp, local_err);
+}
+
+static void
+virt_cpu_standby_request(StandbyHandler *handler, DeviceState *dev,
+                        Error **errp)
+{
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    ARMCPU *cpu = ARM_CPU(dev);
+    StandbyHandlerClass *ssc;
+    CPUState *cs = CPU(dev);
+    Error *local_err = NULL;
+
+    if (!mc->has_standby_cpus) {
+        error_setg(errp, "CPU standby/resume not supported on this machine");
+        return;
+    }
+
+    if (cs->cpu_index == first_cpu->cpu_index) {
+        error_setg(errp, "Boot CPU(id%d=%d:%d:%d:%d) standby/resume !supported",
+                   first_cpu->cpu_index, cpu->socket_id, cpu->cluster_id,
+                   cpu->core_id, cpu->thread_id);
+        return;
+    }
+
+    /* intimate guest about this vCPU standby event */
+    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+    ssc->standby_request(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    if (local_err) {
+        goto fail;
+    }
+
+    return;
+fail:
+    error_propagate(errp, local_err);
+}
+
+static void
+virt_cpu_standby_enter(StandbyHandler *handler, DeviceState *dev, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    StandbyHandlerClass *ssc;
+    CPUState *cs = CPU(dev);
+    Error *local_err = NULL;
+
+    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+    ssc->standby_enter(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    if (local_err) {
+        goto fail;
+    }
+
+    qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
+    vms->boot_cpus--;
+    if (vms->fw_cfg) {
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
+    }
+
+    return;
+fail:
+    error_propagate(errp, local_err);
+}
+
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
 {
     uint8_t clustersz = ARM_DEFAULT_CPUS_PER_CLUSTER;
@@ -3588,6 +3685,52 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
     return NULL;
 }
 
+static void
+virt_machine_device_standby_request(StandbyHandler *handler, DeviceState *dev,
+                                   Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_standby_request(handler, dev, errp);
+    } else {
+        error_setg(errp, "virt: device standby request for unsupported device"
+                   "type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+virt_machine_device_standby_enter(StandbyHandler *handler, DeviceState *dev,
+                                   Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_standby_enter(handler, dev, errp);
+    } else {
+        error_setg(errp, "virt: device standby for unsupported device"
+                   "type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+virt_machine_device_standby_exit(StandbyHandler *handler, DeviceState *dev,
+                                   Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_resume_standby_exit(handler, dev, errp);
+    } else {
+        error_setg(errp, "virt: device resume request for unsupported device"
+                   "type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static HotplugHandler *virt_machine_get_standby_handler(MachineState *machine,
+                                                        DeviceState *dev)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        return STANDBY_HANDLER(machine);
+    }
+
+    return NULL;
+}
+
 /*
  * for arm64 kvm_type [7-0] encodes the requested number of bits
  * in the IPA address space
@@ -3664,6 +3807,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
+    StandbyHandlerClass *sc = STANDBY_HANDLER_CLASS(oc);
     static const char * const valid_cpu_types[] = {
 #ifdef CONFIG_TCG
         ARM_CPU_TYPE_NAME("cortex-a7"),
@@ -3727,6 +3871,12 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
+    mc->has_standby_cpus = true;
+    assert(!mc->get_standby_handler);
+    mc->get_standby_handler = virt_machine_get_standby_handler;
+    sc->standby_request = virt_machine_device_standby_request;
+    sc->standby_enter = virt_machine_device_standby_enter;
+    sc->standby_exit = virt_machine_device_standby_exit;
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;
@@ -3926,6 +4076,7 @@ static const TypeInfo virt_machine_info = {
     .instance_init = virt_instance_init,
     .interfaces = (InterfaceInfo[]) {
          { TYPE_HOTPLUG_HANDLER },
+         { TYPE_STANDBY_HANDLER },
          { }
     },
 };

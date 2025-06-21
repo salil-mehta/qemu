@@ -708,6 +708,20 @@ SRST
 ERST
 
     {
+        .name       = "device_state",
+        .args_type  = "device:0,`state:s",
+        .params     = "driver[,prop=value][,...] [enable|disable]",
+        .help       = "change device state to [enable|disable], like -device on the command line",
+        .cmd        = hmp_device_state,
+        .command_completion = device_state_completion,
+    },
+
+SRST
+``device_state`` *config*
+  change device state.
+ERST
+
+    {
         .name       = "cpu",
         .args_type  = "index:i",
         .params     = "index",

@@ -11,6 +11,9 @@ int qdev_device_help(QemuOpts *opts);
 DeviceState *qdev_device_add(QemuOpts *opts, Error **errp);
 DeviceState *qdev_device_add_from_qdict(const QDict *opts,
                                         bool from_json, Error **errp);
+DeviceState *qdev_device_enable(QDict *opts, Error **errp);
+DeviceState *qdev_device_disable(QDict *opts, Error **errp);
+
 
 /**
  * qdev_set_id: parent the device and set its id if provided.
