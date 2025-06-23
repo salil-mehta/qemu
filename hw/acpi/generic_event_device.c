@@ -20,6 +20,7 @@
 #include "migration/vmstate.h"
 #include "qemu/error-report.h"
 #include "sysemu/runstate.h"
+#include "hw/standby.h"
 
 static const uint32_t ged_supported_events[] = {
     ACPI_GED_MEM_HOTPLUG_EVT,
@@ -274,8 +275,48 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
     } else {
         error_setg(errp, "acpi: device unplug for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
+    }s
+}
+
+static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
+                                      Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(hotplug_dev);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_resume_cb(handler, &s->cpuhp_state, dev, errp);
+    } else {
+        error_setg(errp, "virt: device resume request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
     }
 }
+
+static void acpi_ged_standby_request_cb(StandbyHandler *hotplug_dev,
+                                       DeviceState *dev, Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(hotplug_dev);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_standby_request_cb(hotplug_dev, &s->cpuhp_state, dev, errp);
+    } else {
+        error_setg(errp, "acpi: device standby request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void acpi_ged_standby_cb(StandbyHandler *hotplug_dev, DeviceState *dev,
+                                Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(hotplug_dev);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_standby_cb(&s->cpuhp_state, dev, errp);
+    } else {
+        error_setg(errp, "acpi: device standby for unsupported device type: %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
 
 static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 {
@@ -336,6 +377,7 @@ static bool cpuhp_needed(void *opaque)
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
     return mc->has_hotpluggable_cpus;
+/*   return mc->has_hotpluggable_cpus; */
 }
 
 static const VMStateDescription vmstate_cpuhp_state = {
@@ -474,6 +516,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(class);
+    StandbyHandlerClass *sc = STANDBY_HANDLER_CLASS(class);
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_CLASS(class);
 
     dc->desc = "ACPI Generic Event Device";
@@ -484,6 +527,11 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->plug = acpi_ged_device_plug_cb;
     hc->unplug_request = acpi_ged_unplug_request_cb;
     hc->unplug = acpi_ged_unplug_cb;
+
+    /* we are using same ACPI cpu interface even for standby */
+    sc->exit_standby = acpi_ged_device_resume_cb;
+    sc->standby_request = acpi_ged_standby_request_cb;
+    sc->enter_standby = acpi_ged_standby_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;
     adevc->send_event = acpi_ged_send_event;
@@ -497,6 +545,7 @@ static const TypeInfo acpi_ged_info = {
     .class_init    = acpi_ged_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
+        { TYPE_STANDBY_HANDLER },
         { TYPE_ACPI_DEVICE_IF },
         { }
     }

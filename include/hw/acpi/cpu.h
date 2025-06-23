@@ -1,5 +1,5 @@
 /*
- * QEMU ACPI hotplug utilities
+ * QEMU ACPI utilities
  *
  * Copyright (C) 2016 Red Hat Inc
  *
@@ -39,6 +39,14 @@ typedef struct CPUHotplugState {
     AcpiCpuStatus *devs;
 } CPUHotplugState;
 
+typedef struct CPUStandbyState {
+    MemoryRegion ctrl_reg;
+    uint32_t selector;
+    uint8_t command;
+    uint32_t dev_count;
+    AcpiCpuStatus *devs;
+} CPUStandbyState;
+
 void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp);
 
@@ -51,6 +59,16 @@ void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
 
 void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
                          CPUHotplugState *state, hwaddr base_addr);
+
+void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
+                        DeviceState *dev, Error **errp);
+
+void acpi_cpu_standby_request_cb(StandbyHandler *handler,
+                                 CPUStandbyState *cpu_st, DeviceState *dev,
+                                 Error **errp);
+
+void acpi_cpu_standby_cb(CPUStandbyState *cpu_st, DeviceState *dev,
+                         Error **errp);
 
 typedef struct CPUHotplugFeatures {
     bool acpi_1_compatible;
@@ -67,6 +85,9 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
                     const char *res_root,
                     const char *event_handler_method,
                     AmlRegionSpace rs);
+
+void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
+                    const char *event_handler_method);
 
 void acpi_cpu_ospm_status(CPUHotplugState *cpu_st, ACPIOSTInfoList ***list);
 
