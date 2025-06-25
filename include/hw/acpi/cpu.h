@@ -20,6 +20,8 @@
 #include "hw/hotplug.h"
 
 #define ACPI_CPU_HOTPLUG_REG_LEN 12
+#define ACPI_CPU_STANDBY_REG_LEN 12
+
 
 typedef struct AcpiCpuStatus {
     CPUState *cpu;
@@ -70,6 +72,9 @@ void acpi_cpu_standby_request_cb(StandbyHandler *handler,
 void acpi_cpu_standby_cb(CPUStandbyState *cpu_st, DeviceState *dev,
                          Error **errp);
 
+void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
+                         CPUStandbyState *state, hwaddr base_addr);
+
 typedef struct CPUHotplugFeatures {
     bool acpi_1_compatible;
     bool has_legacy_cphp;
@@ -95,5 +100,11 @@ extern const VMStateDescription vmstate_cpu_hotplug;
 #define VMSTATE_CPU_HOTPLUG(cpuhp, state) \
     VMSTATE_STRUCT(cpuhp, state, 1, \
                    vmstate_cpu_hotplug, CPUHotplugState)
+
+extern const VMStateDescription vmstate_cpu_standby;
+#define VMSTATE_CPU_STANDBY(cpusb, state) \
+    VMSTATE_STRUCT(cpusb, state, 1, \
+                   vmstate_cpu_standby, CPUStandbyState)
+
 
 #endif

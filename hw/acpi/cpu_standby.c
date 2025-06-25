@@ -11,13 +11,11 @@
 #define ACPI_CPU_FLAGS_OFFSET_RW 4
 #define ACPI_CPU_CMD_OFFSET_WR 5
 #define ACPI_CPU_CMD_DATA_OFFSET_RW 8
-#define ACPI_CPU_CMD_DATA2_OFFSET_R 0
 
 enum {
     CPHP_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
     CPHP_OST_EVENT_CMD = 1,
     CPHP_OST_STATUS_CMD = 2,
-    CPHP_GET_CPU_ID_CMD = 3,
     CPHP_CMD_MAX
 };
 
@@ -60,7 +58,8 @@ static bool check_cpu_enabled_status(DeviceState *dev)
     return false;
 }
 
-static uint64_t cpu_hotplug_rd(void *opaque, hwaddr addr, unsigned size)
+static uint64_t
+acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
     uint64_t val = 0;
     CPUStandbyState *cpu_st = opaque;
@@ -76,35 +75,19 @@ static uint64_t cpu_hotplug_rd(void *opaque, hwaddr addr, unsigned size)
         val |= check_cpu_enabled_status(DEVICE(cdev->cpu)) ? 1 : 0;
         val |= cdev->is_inserting ? 2 : 0;
         val |= cdev->is_removing  ? 4 : 0;
-        val |= cdev->fw_remove  ? 16 : 0;
+        //val |= cdev->fw_remove  ? 16 : 0;
         val |= cdev->cpu ? 32 : 0;
-        trace_cpuhp_acpi_read_flags(cpu_st->selector, val);
+        trace_cpusb_acpi_read_flags(cpu_st->selector, val);
         break;
     case ACPI_CPU_CMD_DATA_OFFSET_RW:
         switch (cpu_st->command) {
         case CPHP_GET_NEXT_CPU_WITH_EVENT_CMD:
            val = cpu_st->selector;
            break;
-        case CPHP_GET_CPU_ID_CMD:
-           val = cdev->arch_id & 0xFFFFFFFF;
-           break;
         default:
            break;
         }
-        trace_cpuhp_acpi_read_cmd_data(cpu_st->selector, val);
-        break;
-    case ACPI_CPU_CMD_DATA2_OFFSET_R:
-        switch (cpu_st->command) {
-        case CPHP_GET_NEXT_CPU_WITH_EVENT_CMD:
-           val = 0;
-           break;
-        case CPHP_GET_CPU_ID_CMD:
-           val = cdev->arch_id >> 32;
-           break;
-        default:
-           break;
-        }
-        trace_cpuhp_acpi_read_cmd_data2(cpu_st->selector, val);
+        trace_cpusb_acpi_read_cmd_data(cpu_st->selector, val);
         break;
     default:
         break;
@@ -112,8 +95,9 @@ static uint64_t cpu_hotplug_rd(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
-static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
-                           unsigned int size)
+static void
+acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
+                                 unsigned int size)
 {
     CPUStandbyState *cpu_st = opaque;
     AcpiCpuStatus *cdev;
@@ -123,7 +107,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
 
     if (addr) {
         if (cpu_st->selector >= cpu_st->dev_count) {
-            trace_cpuhp_acpi_invalid_idx_selected(cpu_st->selector);
+            trace_cpusb_acpi_invalid_idx_selected(cpu_st->selector);
             return;
         }
     }
@@ -131,42 +115,37 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
     switch (addr) {
     case ACPI_CPU_SELECTOR_OFFSET_WR: /* current CPU selector */
         cpu_st->selector = data;
-        trace_cpuhp_acpi_write_idx(cpu_st->selector);
+        trace_cpusb_acpi_write_idx(cpu_st->selector);
         break;
     case ACPI_CPU_FLAGS_OFFSET_RW: /* set is_* fields  */
         cdev = &cpu_st->devs[cpu_st->selector];
         if (data & 2) { /* clear insert event */
             cdev->is_inserting = false;
-            trace_cpuhp_acpi_clear_inserting_evt(cpu_st->selector);
+            trace_cpusb_acpi_clear_inserting_evt(cpu_st->selector);
         } else if (data & 4) { /* clear remove event */
             cdev->is_removing = false;
-            trace_cpuhp_acpi_clear_remove_evt(cpu_st->selector);
+            trace_cpusb_acpi_clear_remove_evt(cpu_st->selector);
         } else if (data & 8) {
             DeviceState *dev = NULL;
             StandbyHandler *handler = NULL;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
-                trace_cpuhp_acpi_ejecting_invalid_cpu(cpu_st->selector);
+                trace_cpusb_acpi_ejecting_invalid_cpu(cpu_st->selector);
                 break;
             }
-
-            trace_cpuhp_acpi_ejecting_cpu(cpu_st->selector);
+            /* 
+             * OSPM has returned with eject. Hence, it is now safe to put the
+             * cpu device on standby
+             */
+            trace_cpusb_acpi_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            handler = qdev_get_hotplug_handler(dev);
-            hotplug_handler_unplug(handler, dev, NULL);
-            object_unparent(OBJECT(dev));
-            cdev->fw_remove = false;
-        } else if (data & 16) {
-            if (!cdev->cpu || cdev->cpu == first_cpu) {
-                trace_cpuhp_acpi_fw_remove_invalid_cpu(cpu_st->selector);
-                break;
-            }
-            trace_cpuhp_acpi_fw_remove_cpu(cpu_st->selector);
-            cdev->fw_remove = true;
+            handler = qdev_get_standby_handler(dev);
+            standby_handler_enter(handler, dev, NULL);
+            //object_unparent(OBJECT(dev));
         }
         break;
     case ACPI_CPU_CMD_OFFSET_WR:
-        trace_cpuhp_acpi_write_cmd(cpu_st->selector, data);
+        trace_cpusb_acpi_write_cmd(cpu_st->selector, data);
         if (data < CPHP_CMD_MAX) {
             cpu_st->command = data;
             if (cpu_st->command == CPHP_GET_NEXT_CPU_WITH_EVENT_CMD) {
@@ -174,10 +153,9 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
 
                 do {
                     cdev = &cpu_st->devs[iter];
-                    if (cdev->is_inserting || cdev->is_removing ||
-                        cdev->fw_remove) {
+                    if (cdev->is_inserting || cdev->is_removing) {
                         cpu_st->selector = iter;
-                        trace_cpuhp_acpi_cpu_has_events(cpu_st->selector,
+                        trace_cpusb_acpi_cpu_has_events(cpu_st->selector,
                             cdev->is_inserting, cdev->is_removing);
                         break;
                     }
@@ -191,7 +169,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
         case CPHP_OST_EVENT_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_event = data;
-           trace_cpuhp_acpi_write_ost_ev(cpu_st->selector, cdev->ost_event);
+           trace_cpusb_acpi_write_ost_ev(cpu_st->selector, cdev->ost_event);
            break;
         }
         case CPHP_OST_STATUS_CMD: {
@@ -200,7 +178,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
            info = acpi_cpu_device_status(cpu_st->selector, cdev);
            qapi_event_send_acpi_device_ost(info);
            qapi_free_ACPIOSTInfo(info);
-           trace_cpuhp_acpi_write_ost_status(cpu_st->selector,
+           trace_cpusb_acpi_write_ost_status(cpu_st->selector,
                                              cdev->ost_status);
            break;
         }
@@ -213,9 +191,9 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
     }
 }
 
-static const MemoryRegionOps cpu_hotplug_ops = {
-    .read = cpu_hotplug_rd,
-    .write = cpu_hotplug_wr,
+static const MemoryRegionOps cpu_device_mr_ops = {
+    .read = acpi_cpu_device_mr_read,
+    .write = acpi_cpu_device_mr_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -239,8 +217,8 @@ void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
         state->devs[i].cpu =  CPU(id_list->cpus[i].cpu);
         state->devs[i].arch_id = id_list->cpus[i].arch_id;
     }
-    memory_region_init_io(&state->ctrl_reg, owner, &cpu_hotplug_ops, state,
-                          "acpi-cpu-hotplug", ACPI_CPU_HOTPLUG_REG_LEN);
+    memory_region_init_io(&state->ctrl_reg, owner, &cpu_device_mr_ops, state,
+                          "acpi-cpu-standby", ACPI_CPU_STANDBY_REG_LEN);
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
 }
 
@@ -394,10 +372,10 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
         aml_append(cpu_ctrl_dev, aml_name_decl("_CRS", crs));
 
-        /* declare CPU hotplug MMIO region with related access fields */
+        /* declare CPU standby MMIO region with related access fields */
         aml_append(cpu_ctrl_dev,
             aml_operation_region("PRST", AML_SYSTEM_MEMORY, aml_int(base_addr),
-                                 ACPI_CPU_HOTPLUG_REG_LEN));
+                                 ACPI_CPU_STANDBY_REG_LEN));
 
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK,
                           AML_WRITE_AS_ZEROS);
@@ -487,149 +465,73 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         }
         aml_append(cpus_dev, method);
 
-        method = aml_method(CPU_EJECT_METHOD, 1, AML_SERIALIZED);
-        {
-            Aml *idx = aml_arg(0);
-
-            aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
-            aml_append(method, aml_store(idx, cpu_selector));
-            aml_append(method, aml_store(one, ej_evt));
-            aml_append(method, aml_release(ctrl_lock));
-        }
-        aml_append(cpus_dev, method);
-
         method = aml_method(CPU_SCAN_METHOD, 0, AML_SERIALIZED);
         {
-            const uint8_t max_cpus_per_pass = 255;
-            Aml *else_ctx;
-            Aml *while_ctx, *while_ctx2;
-            Aml *has_event = aml_local(0);
-            Aml *dev_chk = aml_int(1);
-            Aml *eject_req = aml_int(3);
+            Aml *has_event = aml_local(0); /* Local0: Loop control flag */
+            Aml *uid = aml_local(1); /* Local1: Current CPU UID */
+            /* Constants */
+            Aml *dev_chk = aml_int(1); /* Notify: device check for insert */
+            Aml *eject_req = aml_int(3); /* Notify: eject for removal */
             Aml *next_cpu_cmd = aml_int(CPHP_GET_NEXT_CPU_WITH_EVENT_CMD);
-            Aml *num_added_cpus = aml_local(1);
-            Aml *cpu_idx = aml_local(2);
-            Aml *uid = aml_local(3);
-            Aml *has_job = aml_local(4);
-            Aml *new_cpus = aml_name(CPU_ADDED_LIST);
 
+            /* Acquire CPU lock */
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
 
-            /*
-             * Windows versions newer than XP (including Windows 10/Windows
-             * Server 2019), do support* VarPackageOp but, it is cripled to hold
-             * the same elements number as old PackageOp.
-             * For compatibility with Windows XP (so it won't crash) use ACPI1.0
-             * PackageOp which can hold max 255 elements.
-             *
-             * use named package as old Windows don't support it in local var
-             */
-            aml_append(method, aml_name_decl(CPU_ADDED_LIST,
-                                             aml_package(max_cpus_per_pass)));
-
+            /* Initialize loop */
             aml_append(method, aml_store(zero, uid));
-            aml_append(method, aml_store(one, has_job));
-            /*
-             * CPU_ADDED_LIST can hold limited number of elements, outer loop
-             * allows to process CPUs in batches which let us to handle more
-             * CPUs than CPU_ADDED_LIST can hold.
-             */
-            while_ctx2 = aml_while(aml_equal(has_job, one));
+            aml_append(method, aml_store(one, has_event));
+
+            Aml *while_ctx = aml_while(aml_land(
+                aml_equal(has_event, one),
+                aml_lless(uid, aml_int(arch_ids->len))
+            ));
             {
-                aml_append(while_ctx2, aml_store(zero, has_job));
-
-                aml_append(while_ctx2, aml_store(one, has_event));
-                aml_append(while_ctx2, aml_store(zero, num_added_cpus));
-
+                aml_append(while_ctx, aml_store(zero, has_event));
                 /*
-                 * Scan CPUs, till there are CPUs with events or
-                 * CPU_ADDED_LIST capacity is exhausted
+                 * Issue scan cmd: QEMU will return next CPU with event in
+                 * cpu_data
                  */
-                while_ctx = aml_while(aml_land(aml_equal(has_event, one),
-                                      aml_lless(uid, aml_int(arch_ids->len))));
+                aml_append(while_ctx, aml_store(uid, cpu_selector));
+                aml_append(while_ctx, aml_store(next_cpu_cmd, cpu_cmd));
+
+                /* If scan wrapped around to an earlier UID, exit loop */
+                Aml *wrap_check = aml_if(aml_lless(cpu_data, uid));
+                aml_append(wrap_check, aml_break());
+                aml_append(while_ctx, wrap_check);
+
+                /* Set UID to scanned result */
+                aml_append(while_ctx, aml_store(cpu_data, uid));
+
+                /* Handle Insert Event */
+                Aml *if_ins = aml_if(aml_equal(ins_evt, one));
                 {
-                     /*
-                      * clear loop exit condition, ins_evt/rm_evt checks will
-                      * set it to 1 while next_cpu_cmd returns a CPU with events
-                      */
-                     aml_append(while_ctx, aml_store(zero, has_event));
-
-                     aml_append(while_ctx, aml_store(uid, cpu_selector));
-                     aml_append(while_ctx, aml_store(next_cpu_cmd, cpu_cmd));
-
-                     /*
-                      * wrap around case, scan is complete, exit loop.
-                      * It happens since events are not cleared in scan loop,
-                      * so next_cpu_cmd continues to find already processed CPUs
-                      */
-                     ifctx = aml_if(aml_lless(cpu_data, uid));
-                     {
-                         aml_append(ifctx, aml_break());
-                     }
-                     aml_append(while_ctx, ifctx);
-
-                     /*
-                      * if CPU_ADDED_LIST is full, exit inner loop and process
-                      * collected CPUs
-                      */
-                     ifctx = aml_if(
-                         aml_equal(num_added_cpus, aml_int(max_cpus_per_pass)));
-                     {
-                         aml_append(ifctx, aml_store(one, has_job));
-                         aml_append(ifctx, aml_break());
-                     }
-                     aml_append(while_ctx, ifctx);
-
-                     aml_append(while_ctx, aml_store(cpu_data, uid));
-                     ifctx = aml_if(aml_equal(ins_evt, one));
-                     {
-                         /* cache added CPUs to Notify/Wakeup later */
-                         aml_append(ifctx, aml_store(uid,
-                             aml_index(new_cpus, num_added_cpus)));
-                         aml_append(ifctx, aml_increment(num_added_cpus));
-                         aml_append(ifctx, aml_store(one, has_event));
-                     }
-                     aml_append(while_ctx, ifctx);
-                     else_ctx = aml_else();
-                     ifctx = aml_if(aml_equal(rm_evt, one));
-                     {
-                         aml_append(ifctx,
-                             aml_call2(CPU_NOTIFY_METHOD, uid, eject_req));
-                         aml_append(ifctx, aml_store(one, rm_evt));
-                         aml_append(ifctx, aml_store(one, has_event));
-                     }
-                     aml_append(else_ctx, ifctx);
-                     aml_append(while_ctx, else_ctx);
-                     aml_append(while_ctx, aml_increment(uid));
-                }
-                aml_append(while_ctx2, while_ctx);
-
-                /* Notify OSPM about new CPUs and clear insert events */
-                aml_append(while_ctx2, aml_store(zero, cpu_idx));
-                while_ctx = aml_while(aml_lless(cpu_idx, num_added_cpus));
-                {
-                    aml_append(while_ctx,
-                        aml_store(aml_derefof(aml_index(new_cpus, cpu_idx)),
-                                  uid));
-                    aml_append(while_ctx,
+                    aml_append(if_ins,
                         aml_call2(CPU_NOTIFY_METHOD, uid, dev_chk));
-                    aml_append(while_ctx, aml_store(uid, aml_debug()));
-                    aml_append(while_ctx, aml_store(uid, cpu_selector));
-                    aml_append(while_ctx, aml_store(one, ins_evt));
-                    aml_append(while_ctx, aml_increment(cpu_idx));
+                    /* clear insert (device check) event */
+                    aml_append(if_ins, aml_store(one, ins_evt));
+                    aml_append(if_ins, aml_store(one, has_event));
                 }
-                aml_append(while_ctx2, while_ctx);
-                /*
-                 * If another batch is needed, then it will resume scanning
-                 * exactly at -- and not after -- the last CPU that's currently
-                 * in CPU_ADDED_LIST. In other words, the last CPU in
-                 * CPU_ADDED_LIST is going to be re-checked. That's OK: we've
-                 * just cleared the insert event for *all* CPUs in
-                 * CPU_ADDED_LIST, including the last one. So the scan will
-                 * simply seek past it.
-                 */
+                aml_append(while_ctx, if_ins);
+
+                /* Handle Remove Event */
+                Aml *else_ctx = aml_else();
+                Aml *if_rm = aml_if(aml_equal(rm_evt, one));
+                {
+                    aml_append(if_rm,
+                        aml_call2(CPU_NOTIFY_METHOD, uid, eject_req));
+                    /* clear remove event */
+                    aml_append(if_rm, aml_store(one, rm_evt));
+                    aml_append(if_rm, aml_store(one, has_event));
+                }
+                aml_append(else_ctx, if_rm);
+                aml_append(while_ctx, else_ctx);
+
+                /* Increment UID */
+                aml_append(while_ctx, aml_increment(uid));
             }
-            aml_append(method, while_ctx2);
+            aml_append(method, while_ctx);
+
+            /* Release cpu lock */
             aml_append(method, aml_release(ctrl_lock));
         }
         aml_append(cpus_dev, method);
@@ -677,16 +579,6 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
                           aml_arg(1), aml_arg(2))
             );
             aml_append(dev, method);
-
-            /* Linux guests discard SRAT info for non-present CPUs
-             * as a result _PXM is required for all CPUs which might
-             * be hot-plugged. For simplicity, add it for all CPUs.
-             */
-            if (arch_ids->cpus[i].props.has_node_id) {
-                aml_append(dev, aml_name_decl("_PXM",
-                           aml_int(arch_ids->cpus[i].props.node_id)));
-            }
-
             aml_append(cpus_dev, dev);
         }
     }

@@ -26,6 +26,7 @@ static const uint32_t ged_supported_events[] = {
     ACPI_GED_MEM_HOTPLUG_EVT,
     ACPI_GED_PWR_DOWN_EVT,
     ACPI_GED_NVDIMM_HOTPLUG_EVT,
+    ACPI_GED_CPU_STANDBY_EVT,
     ACPI_GED_CPU_HOTPLUG_EVT,
 };
 
@@ -109,9 +110,14 @@ void build_ged_aml(Aml *table, const char *name, HotplugHandler *hotplug_dev,
                 aml_append(if_ctx, aml_call0(MEMORY_DEVICES_CONTAINER "."
                                              MEMORY_SLOT_SCAN_METHOD));
                 break;
+            case ACPI_GED_CPU_STANDBY_EVT:
+                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPU_SCAN_METHOD));
+                break;
+#if 0
             case ACPI_GED_CPU_HOTPLUG_EVT:
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPU_SCAN_METHOD));
                 break;
+#endif
             case ACPI_GED_PWR_DOWN_EVT:
                 aml_append(if_ctx,
                            aml_notify(aml_name(ACPI_POWER_BUTTON_DEVICE),
@@ -338,6 +344,8 @@ static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
         sel = ACPI_GED_PWR_DOWN_EVT;
     } else if (ev & ACPI_NVDIMM_HOTPLUG_STATUS) {
         sel = ACPI_GED_NVDIMM_HOTPLUG_EVT;
+    } else if (ev & ACPI_CPU_STANDBY_STATUS) {
+        sel = ACPI_GED_CPU_STANDBY_EVT;
     } else if (ev & ACPI_CPU_HOTPLUG_STATUS) {
         sel = ACPI_GED_CPU_HOTPLUG_EVT;
     } else {
@@ -391,6 +399,17 @@ static const VMStateDescription vmstate_cpuhp_state = {
     }
 };
 
+static const VMStateDescription vmstate_cpusb_state = {
+    .name = "acpi-ged/cpusb",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = cpuhp_needed,
+    .fields      = (VMStateField[]) {
+        VMSTATE_CPU_STANDBY(cpusb_state, AcpiGedState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_ged_state = {
     .name = "acpi-ged-state",
     .version_id = 1,
@@ -440,6 +459,7 @@ static const VMStateDescription vmstate_acpi_ged = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_memhp_state,
         &vmstate_cpuhp_state,
+        &vmstate_cpusb_state,
         &vmstate_ghes_state,
         NULL
     }
@@ -462,6 +482,15 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
         }
 
         switch (event) {
+        case ACPI_GED_CPU_STANDBY_EVT:
+            /* initialize CPU Standby related regions */
+            memory_region_init(&s->container_cpuhp, OBJECT(dev),
+                                "cpusb container",
+                                ACPI_CPU_STANDBY_REG_LEN);
+            sysbus_init_mmio(sbd, &s->container_cpusb);
+            cpu_standby_hw_init(&s->container_cpusb, OBJECT(dev),
+                                &s->cpusb_state, 0);
+            break;
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */
             memory_region_init(&s->container_cpuhp, OBJECT(dev),

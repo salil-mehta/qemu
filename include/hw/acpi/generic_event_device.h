@@ -97,10 +97,11 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
  * to describe what kind of events they want to support
  * through GED.
  */
-#define ACPI_GED_MEM_HOTPLUG_EVT   0x1
-#define ACPI_GED_PWR_DOWN_EVT      0x2
-#define ACPI_GED_NVDIMM_HOTPLUG_EVT 0x4
-#define ACPI_GED_CPU_HOTPLUG_EVT    0x8
+#define ACPI_GED_MEM_HOTPLUG_EVT     0x1
+#define ACPI_GED_PWR_DOWN_EVT        0x2
+#define ACPI_GED_NVDIMM_HOTPLUG_EVT  0x4
+#define ACPI_GED_CPU_STANDBY_EVT     0x8
+#define ACPI_GED_CPU_HOTPLUG_EVT     0x10
 
 typedef struct GEDState {
     MemoryRegion evt;
