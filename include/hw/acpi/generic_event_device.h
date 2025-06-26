@@ -121,7 +121,7 @@ struct AcpiGedState {
     AcpiGhesState ghes_state;
 };
 
-void build_ged_aml(Aml *table, const char* name, DeviceState  *acpi_ged,
+void build_ged_aml(Aml *table, const char* name, DeviceState *acpi_ged,
                    uint32_t ged_irq, AmlRegionSpace rs, hwaddr ged_base);
 void acpi_dsdt_add_power_button(Aml *scope);
 
