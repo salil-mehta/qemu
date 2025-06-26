@@ -90,7 +90,9 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 #define GED_DEVICE      "GED"
 #define AML_GED_EVT_REG "EREG"
 #define AML_GED_EVT_SEL "ESEL"
-#define AML_GED_EVT_CPU_SCAN_METHOD "\\_SB.GED.CSCN"
+#define AML_GED_EVT_CPUHP_SCAN_METHOD "\\_SB.GED.HSCN"
+#define AML_GED_EVT_CPUSB_SCAN_METHOD "\\_SB.GED.SSCN"
+
 
 /*
  * Platforms need to specify the GED event bitmap
@@ -114,6 +116,7 @@ struct AcpiGedState {
     MemHotplugState memhp_state;
     MemoryRegion container_memhp;
     CPUHotplugState cpuhp_state;
+    CPUStandbyState cpusb_state;
     MemoryRegion container_cpuhp;
     GEDState ged_state;
     uint32_t ged_event_bitmap;

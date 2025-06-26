@@ -13,18 +13,17 @@
 #define ACPI_CPU_CMD_DATA_OFFSET_RW 8
 
 enum {
-    CPHP_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
-    CPHP_OST_EVENT_CMD = 1,
-    CPHP_OST_STATUS_CMD = 2,
-    CPHP_CMD_MAX
+    ACPI_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
+    ACPI_OST_EVENT_CMD = 1,
+    ACPI_OST_STATUS_CMD = 2,
+    ACPI_CMD_MAX
 };
 
-static ACPIOSTInfo *acpi_cpu_device_status(int idx, AcpiCpuStatus *cdev)
+static ACPIOSTInfo *
+acpi_cpu_device_standby_status(int idx, AcpiCpuStatus *cdev)
 {
     ACPIOSTInfo *info = g_new0(ACPIOSTInfo, 1);
 
-    info->slot_type = ACPI_SLOT_TYPE_CPU;
-    info->slot = g_strdup_printf("%d", idx);
     info->source = cdev->ost_event;
     info->status = cdev->ost_status;
     if (cdev->cpu) {
@@ -36,13 +35,15 @@ static ACPIOSTInfo *acpi_cpu_device_status(int idx, AcpiCpuStatus *cdev)
     return info;
 }
 
-void acpi_cpu_ospm_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
+void
+acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
 {
     ACPIOSTInfoList ***tail = list;
     int i;
 
     for (i = 0; i < cpu_st->dev_count; i++) {
-        QAPI_LIST_APPEND(*tail, acpi_cpu_device_status(i, &cpu_st->devs[i]));
+        QAPI_LIST_APPEND(*tail,
+                         acpi_cpu_device_standby_status(i, &cpu_st->devs[i]));
     }
 }
 
@@ -81,7 +82,7 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
         break;
     case ACPI_CPU_CMD_DATA_OFFSET_RW:
         switch (cpu_st->command) {
-        case CPHP_GET_NEXT_CPU_WITH_EVENT_CMD:
+        case ACPI_GET_NEXT_CPU_WITH_EVENT_CMD:
            val = cpu_st->selector;
            break;
         default:
@@ -146,9 +147,9 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     case ACPI_CPU_CMD_OFFSET_WR:
         trace_cpusb_acpi_write_cmd(cpu_st->selector, data);
-        if (data < CPHP_CMD_MAX) {
+        if (data < ACPI_CMD_MAX) {
             cpu_st->command = data;
-            if (cpu_st->command == CPHP_GET_NEXT_CPU_WITH_EVENT_CMD) {
+            if (cpu_st->command == ACPI_GET_NEXT_CPU_WITH_EVENT_CMD) {
                 uint32_t iter = cpu_st->selector;
 
                 do {
@@ -166,13 +167,13 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     case ACPI_CPU_CMD_DATA_OFFSET_RW:
         switch (cpu_st->command) {
-        case CPHP_OST_EVENT_CMD: {
+        case ACPI_OST_EVENT_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_event = data;
            trace_cpusb_acpi_write_ost_ev(cpu_st->selector, cdev->ost_event);
            break;
         }
-        case CPHP_OST_STATUS_CMD: {
+        case ACPI_OST_STATUS_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_status = data;
            info = acpi_cpu_device_status(cpu_st->selector, cdev);
@@ -201,7 +202,7 @@ static const MemoryRegionOps cpu_device_mr_ops = {
     },
 };
 
-void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
+void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
                          CPUStandbyState *state, hwaddr base_addr)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
@@ -247,8 +248,9 @@ static AcpiCpuStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void acpi_cpu_plug_cb(StandbyHandler *handler,
-                      CPUStandbyState *cpu_st, DeviceState *dev, Error **errp)
+void
+acpi_ged_device_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
+                          DeviceState *dev, Error **errp)
 {
     AcpiCpuStatus *cdev;
 
@@ -257,14 +259,17 @@ void acpi_cpu_plug_cb(StandbyHandler *handler,
         return;
     }
 
-    cdev->cpu = CPU(dev);
-    if (dev->hotplugged) {
-        cdev->is_inserting = true;
-        acpi_send_event(DEVICE(handler), ACPI_CPU_HOTPLUG_STATUS);
+    assert(cdev->cpu);
+
+    // cdev->cpu = CPU(dev);
+    //if (dev->hotplugged) {
+    if (phase_check(PHASE_MACHINE_READY)) {
+        cdev->is_inserting = true; /* ACPI device check in progress */
+        acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
     }
 }
 
-void acpi_cpu_unplug_request_cb(StandbyHandler *handler,
+void acpi_cpu_standby_request_cb(StandbyHandler *handler,
                                 CPUStandbyState *cpu_st,
                                 DeviceState *dev, Error **errp)
 {
@@ -275,11 +280,13 @@ void acpi_cpu_unplug_request_cb(StandbyHandler *handler,
         return;
     }
 
-    cdev->is_removing = true;
-    acpi_send_event(DEVICE(handler), ACPI_CPU_HOTPLUG_STATUS);
+    assert(cdev->cpu);
+
+    cdev->is_removing = true; /* ACPI device remove in progress */
+    acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
 }
 
-void acpi_cpu_unplug_cb(CPUStandbyState *cpu_st,
+void acpi_cpu_standby_cb(CPUStandbyState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
     AcpiCpuStatus *cdev;
@@ -295,7 +302,7 @@ void acpi_cpu_unplug_cb(CPUStandbyState *cpu_st,
 }
 
 static const VMStateDescription vmstate_cpu_standby_sts = {
-    .name = "CPU standby device state",
+    .name = "CPU standby status",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
@@ -307,7 +314,7 @@ static const VMStateDescription vmstate_cpu_standby_sts = {
     }
 };
 
-const VMStateDescription vmstate_cpu_hotplug = {
+const VMStateDescription vmstate_cpu_standby = {
     .name = "CPU standby state",
     .version_id = 1,
     .minimum_version_id = 1,
@@ -322,7 +329,7 @@ const VMStateDescription vmstate_cpu_hotplug = {
 };
 
 #define CPU_NAME_FMT      "C%.03X"
-#define CPUHP_RES_DEVICE  "PRES"
+#define CPUSB_RES_DEVICE  "PRSB"
 #define CPU_LOCK          "CPLK"
 #define CPU_STS_METHOD    "CSTA"
 #define CPU_SCAN_METHOD   "CSCN"
@@ -340,8 +347,8 @@ const VMStateDescription vmstate_cpu_hotplug = {
 #define CPU_EJECT_EVENT   "CEJ0"
 #define CPU_PRESENT       "CPRS"
 
-void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
-                    const char *event_handler_method)
+void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
+                            const char *event_handler_method)
 {
     Aml *ifctx;
     Aml *field;
@@ -354,7 +361,7 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
     const CPUArchIdList *arch_ids = mc->possible_cpu_arch_ids(machine);
-    char *cphp_res_path = g_strdup_printf("%s." CPUHP_RES_DEVICE, res_root);
+    char *cphp_res_path = g_strdup_printf("%s." CPUSB_RES_DEVICE, res_root);
 
     cpu_ctrl_dev = aml_device("%s", cphp_res_path);
     {
@@ -363,7 +370,7 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         aml_append(cpu_ctrl_dev,
             aml_name_decl("_HID", aml_eisaid("PNP0A06")));
         aml_append(cpu_ctrl_dev,
-            aml_name_decl("_UID", aml_string("CPU Hotplug resources")));
+            aml_name_decl("_UID", aml_string("CPU Standby resources")));
         aml_append(cpu_ctrl_dev, aml_mutex(CPU_LOCK, 0));
 
         crs = aml_resource_template();
@@ -465,6 +472,17 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         }
         aml_append(cpus_dev, method);
 
+        method = aml_method(CPU_EJECT_METHOD, 1, AML_SERIALIZED);
+        {
+            Aml *idx = aml_arg(0);
+
+            aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
+            aml_append(method, aml_store(idx, cpu_selector));
+            aml_append(method, aml_store(one, ej_evt));
+            aml_append(method, aml_release(ctrl_lock));
+        }
+        aml_append(cpus_dev, method);
+
         method = aml_method(CPU_SCAN_METHOD, 0, AML_SERIALIZED);
         {
             Aml *has_event = aml_local(0); /* Local0: Loop control flag */
@@ -472,7 +490,7 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
             /* Constants */
             Aml *dev_chk = aml_int(1); /* Notify: device check for insert */
             Aml *eject_req = aml_int(3); /* Notify: eject for removal */
-            Aml *next_cpu_cmd = aml_int(CPHP_GET_NEXT_CPU_WITH_EVENT_CMD);
+            Aml *next_cpu_cmd = aml_int(ACPI_GET_NEXT_CPU_WITH_EVENT_CMD);
 
             /* Acquire CPU lock */
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
@@ -539,8 +557,8 @@ void build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         method = aml_method(CPU_OST_METHOD, 4, AML_SERIALIZED);
         {
             Aml *uid = aml_arg(0);
-            Aml *ev_cmd = aml_int(CPHP_OST_EVENT_CMD);
-            Aml *st_cmd = aml_int(CPHP_OST_STATUS_CMD);
+            Aml *ev_cmd = aml_int(ACPI_OST_EVENT_CMD);
+            Aml *st_cmd = aml_int(ACPI_OST_STATUS_CMD);
 
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
             aml_append(method, aml_store(uid, cpu_selector));

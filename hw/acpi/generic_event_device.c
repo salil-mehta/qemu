@@ -111,10 +111,10 @@ void build_ged_aml(Aml *table, const char *name, DeviceState *acpi_ged,
                                              MEMORY_SLOT_SCAN_METHOD));
                 break;
             case ACPI_GED_CPU_STANDBY_EVT:
-                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPU_SCAN_METHOD));
+                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUSB_SCAN_METHOD));
                 break;
             case ACPI_GED_CPU_HOTPLUG_EVT:
-                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPU_SCAN_METHOD));
+                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUHP_SCAN_METHOD));
                 break;
             case ACPI_GED_PWR_DOWN_EVT:
                 aml_append(if_ctx,
@@ -285,36 +285,36 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
 static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
                                       Error **errp)
 {
-    AcpiGedState *s = ACPI_GED(hotplug_dev);
+    AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_resume_cb(handler, &s->cpuhp_state, dev, errp);
+        acpi_cpu_resume_cb(handler, &s->cpusb_state, dev, errp);
     } else {
         error_setg(errp, "virt: device resume request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
     }
 }
 
-static void acpi_ged_standby_request_cb(StandbyHandler *hotplug_dev,
+static void acpi_ged_standby_request_cb(StandbyHandler *handler,
                                        DeviceState *dev, Error **errp)
 {
-    AcpiGedState *s = ACPI_GED(hotplug_dev);
+    AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_standby_request_cb(hotplug_dev, &s->cpuhp_state, dev, errp);
+        acpi_cpu_standby_request_cb(handler, &s->cpusb_state, dev, errp);
     } else {
         error_setg(errp, "acpi: device standby request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
     }
 }
 
-static void acpi_ged_standby_cb(StandbyHandler *hotplug_dev, DeviceState *dev,
+static void acpi_ged_standby_cb(StandbyHandler *handler, DeviceState *dev,
                                 Error **errp)
 {
-    AcpiGedState *s = ACPI_GED(hotplug_dev);
+    AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_standby_cb(&s->cpuhp_state, dev, errp);
+        acpi_cpu_standby_cb(&s->cpusb_state, dev, errp);
     } else {
         error_setg(errp, "acpi: device standby for unsupported device type: %s",
                    object_get_typename(OBJECT(dev)));
@@ -328,6 +328,7 @@ static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 
     acpi_memory_ospm_status(&s->memhp_state, list);
     acpi_cpu_ospm_status(&s->cpuhp_state, list);
+    acpi_cpu_ospm_standby_status(&s->cpusb_state, list);
 }
 
 static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
@@ -555,7 +556,6 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug_request = acpi_ged_unplug_request_cb;
     hc->unplug = acpi_ged_unplug_cb;
 
-    /* we are using same ACPI cpu interface even for standby */
     sc->exit_standby = acpi_ged_device_resume_cb;
     sc->standby_request = acpi_ged_standby_request_cb;
     sc->enter_standby = acpi_ged_standby_cb;

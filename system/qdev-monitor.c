@@ -1099,7 +1099,6 @@ void qdev_standby(DeviceState *dev, Error **errp)
 {
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
     StandbyHandler *handler;
-    StandbyHandlerClass *sdc;
     Error *local_err = NULL;
 
     /* RFC: TBD: standby blockers - maybe for non-core devices? */
@@ -1125,10 +1124,7 @@ void qdev_standby(DeviceState *dev, Error **errp)
     g_assert(handler);
 
     /* for now, we are only supporting asynchronous disabling */
-    sdc = STANDBY_HANDLER_GET_CLASS(handler);
-    if (sdc->standby_request) {
-        standby_handler_request(handler, dev, &local_err);
-    }
+    standby_handler_request(handler, dev, &local_err);
 
     error_propagate(errp, local_err);
 }
