@@ -120,7 +120,7 @@ build_dsdt_microvm(GArray *table_data, BIOSLinker *linker,
     sb_scope = aml_scope("_SB");
     fw_cfg_add_acpi_dsdt(sb_scope, x86ms->fw_cfg);
     qbus_build_aml(BUS(isabus), sb_scope);
-    build_ged_aml(sb_scope, GED_DEVICE, x86ms->acpi_dev,
+    build_ged_aml(sb_scope, GED_DEVICE, DEVICE(x86ms->acpi_dev),
                   GED_MMIO_IRQ, AML_SYSTEM_MEMORY, GED_MMIO_BASE);
     acpi_dsdt_add_power_button(sb_scope);
     acpi_dsdt_add_virtio(sb_scope, mms);

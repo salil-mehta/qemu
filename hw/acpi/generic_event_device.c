@@ -40,10 +40,10 @@ static const uint32_t ged_supported_events[] = {
  * affected by the interrupt. This way, we can support up to 32 events
  * with a unique interrupt.
  */
-void build_ged_aml(Aml *table, const char *name, HotplugHandler *hotplug_dev,
+void build_ged_aml(Aml *table, const char *name, DeviceState  *acpi_ged,
                    uint32_t ged_irq, AmlRegionSpace rs, hwaddr ged_base)
 {
-    AcpiGedState *s = ACPI_GED(hotplug_dev);
+    AcpiGedState *s = ACPI_GED(acpi_ged);
     Aml *crs = aml_resource_template();
     Aml *evt, *field;
     Aml *dev = aml_device("%s", name);
