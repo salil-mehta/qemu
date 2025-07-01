@@ -346,6 +346,27 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
+bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
+{
+    assert(!dev->realized);
+
+    if (bus) {
+        error_setg(errp, "Device %s does not supports standby/resume",
+                   object_get_typename(obj));
+        return false;
+    } else {
+        /* for devices like cpu */
+        assert(!DEVICE_GET_CLASS(dev)->bus_type);
+    }
+
+    return object_property_set_bool(OBJECT(dev), "standby", true, errp);
+}
+
+void qdev_resume(DeviceState *dev, Error **errp)
+{
+    object_property_set_bool(OBJECT(dev), "standby", false, errp);
+}
+
 bool qdev_machine_modified(void)
 {
     return qdev_hot_added || qdev_hot_removed;

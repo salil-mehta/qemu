@@ -761,8 +761,8 @@ DeviceState *qdev_device_enable(QDict *opts, Error **errp)
 {
     ERRP_GUARD();
     DeviceClass *dc;
-    const char *driver, *path;
-    DeviceState *dev = NULL;
+    DeviceState *dev;
+    const char *driver;
 
     driver = qdict_get_try_str(opts, "driver");
     if (!driver) {
@@ -779,14 +779,8 @@ DeviceState *qdev_device_enable(QDict *opts, Error **errp)
 
     /* TBD: we might have to consider bus related handling for other devices */
 
-    if (phase_check(PHASE_MACHINE_READY)) {
-        error_setg(errp, "device '%s' does not support standby/resume at this"
-                   " stage", dev->name);
-        return NULL;
-    }
-
     if (!migration_is_idle()) {
-        error_setg(errp, "device_add not allowed while migrating");
+        error_setg(errp, "device_enable not allowed while migrating");
         return NULL;
     }
 
@@ -797,15 +791,23 @@ DeviceState *qdev_device_enable(QDict *opts, Error **errp)
         return NULL;
     }
 
-    if (!qdev_realize(dev, bus, errp)) {
-        goto err_del_dev;
+    if (!dev) {
+        qdev_printf("could not find device for driver %s\n", driver);
+        return NULL;
     }
-    return dev;
+
+    if (phase_check(PHASE_MACHINE_READY)) {
+        error_setg(errp, "device '%s' does not support standby/resume at this"
+                   " stage", dev->name);
+        return NULL;
+    }
+
+    if (!qdev_resume(dev, errp)) {
+        return NULL;
+    }
 
     qemu_opts_del(opts);
-    qobject_unref(qdict);
-
-    return ret;
+    return dev;
 }
 
 #define qdev_printf(fmt, ...) monitor_printf(mon, "%*s" fmt, indent, "", ## __VA_ARGS__)
@@ -946,34 +948,16 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
 
 void qmp_device_enable(QDict *qdict, QObject **ret_data, Error **errp)
 {
-    QemuOpts *opts;
     DeviceState *dev;
 
-    opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, errp);
-    if (!opts) {
-        return;
-    }
-    if (!monitor_cur_is_qmp() && qdev_device_help(opts)) {
-        qemu_opts_del(opts);
+    if (!monitor_cur_is_qmp()) {
         return;
     }
     dev = qdev_device_enable(opts, errp);
     if (!dev) {
-        /*
-         * Drain all pending RCU callbacks. This is done because
-         * some bus related operations can delay a device removal
-         * (in this case this can happen if device is added and then
-         * removed due to a configuration error)
-         * to a RCU callback, but user might expect that this interface
-         * will finish its job completely once qmp command returns result
-         * to the user
-         */
-        drain_call_rcu();
-
-        qemu_opts_del(opts);
-        return;
+        error_setg(errp, "Device %s is already in the "
+                             "process of unplug", id);
     }
-    object_unref(OBJECT(dev));
 }
 
 static DeviceState *find_device_state(const char *id, Error **errp)
@@ -1086,21 +1070,19 @@ void hmp_device_enable(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, err);
 }
 
-void hmp_device_enable(Monitor *mon, const QDict *qdict)
+void qmp_device_disable(const char *id, Error **errp)
 {
-    Error *err = NULL;
-
-    /* TBD: to be replaced by the enable counterpart later */
-    qmp_device_add((QDict *)qdict, NULL, &err);
-    hmp_handle_error(mon, err);
-}
-
-void qdev_standby(DeviceState *dev, Error **errp)
-{
+    DeviceState *dev = find_device_state(id, errp);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
     StandbyHandler *handler;
     Error *local_err = NULL;
 
+    if (!dev) {
+        error_setg(errp, "Device '%s' not found!", id);
+        return;
+    }
+
+    dc = DEVICE_GET_CLASS(dev);
     /* RFC: TBD: standby blockers - maybe for non-core devices? */
 
     /*
@@ -1119,23 +1101,10 @@ void qdev_standby(DeviceState *dev, Error **errp)
         error_setg(errp, "device_disable not allowed while migrating");
         return;
     }
+    /* TBD: check pending event handling later */
 
-    handler = qdev_get_standby_handler(dev);
-    g_assert(handler);
-
-    /* for now, we are only supporting asynchronous disabling */
-    standby_handler_request(handler, dev, &local_err);
-
-    error_propagate(errp, local_err);
-}
-
-void qmp_device_disable(const char *id, Error **errp)
-{
-    DeviceState *dev = find_device_state(id, errp);
-    if (dev != NULL) {
-        /* TBD: check pending event handling later */
-        qdev_standby(dev, errp);
-    }
+    /* put the device on standby */
+    qdev_standby(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp);
 }
 
 void hmp_device_disable(Monitor *mon, const QDict *qdict)

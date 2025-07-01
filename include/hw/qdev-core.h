@@ -531,6 +531,22 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_standby: put device.on standby mode
+ * @dev: device to put on standby
+ * @bus: bus on which device is sitting(may be NULL e.g. for devices like cpus)
+ * @errp: pointer to error object
+ *
+ * Depending upon the type of device, this should result in sequence
+ * of (a)synchronous handling to put device in the standby mode
+ *
+ * @dev must have already been realized
+ *
+ * Return: true on success, else false setting @errp with error
+ */
+bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp);
+void qdev_resume(DeviceState *dev);
+
+/**
  * qdev_unrealize: Unrealize a device
  * @dev: device to unrealize
  *

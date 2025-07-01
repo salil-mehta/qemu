@@ -321,7 +321,6 @@ static void acpi_ged_standby_cb(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-
 static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 {
     AcpiGedState *s = ACPI_GED(adev);

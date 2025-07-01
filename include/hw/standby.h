@@ -37,8 +37,8 @@ typedef void (*standby_fn)(StandbyHandler *handler, DeviceState *dev,
 /**
  * StandbyDeviceClass:
  *
- * Interface to be implemented by a device performing
- * hardware standby enter/exit functions.
+ * Interface to be implemented by a device performing hardware standby
+ * enter/exit functions.
  *
  * @parent: Opaque parent interface.
  * @standby_request: This standby request callback might be used to intimate the

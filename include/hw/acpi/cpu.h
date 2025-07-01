@@ -1,5 +1,5 @@
 /*
- * QEMU ACPI utilities
+ * QEMU ACPI hotplug utilities
  *
  * Copyright (C) 2016 Red Hat Inc
  *
@@ -20,8 +20,6 @@
 #include "hw/hotplug.h"
 
 #define ACPI_CPU_HOTPLUG_REG_LEN 12
-#define ACPI_CPU_STANDBY_REG_LEN 12
-
 
 typedef struct AcpiCpuStatus {
     CPUState *cpu;
@@ -41,14 +39,6 @@ typedef struct CPUHotplugState {
     AcpiCpuStatus *devs;
 } CPUHotplugState;
 
-typedef struct CPUStandbyState {
-    MemoryRegion ctrl_reg;
-    uint32_t selector;
-    uint8_t command;
-    uint32_t dev_count;
-    AcpiCpuStatus *devs;
-} CPUStandbyState;
-
 void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp);
 
@@ -61,19 +51,6 @@ void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
 
 void cpu_hotplug_hw_init(MemoryRegion *as, Object *owner,
                          CPUHotplugState *state, hwaddr base_addr);
-
-void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
-                        DeviceState *dev, Error **errp);
-
-void acpi_cpu_standby_request_cb(StandbyHandler *handler,
-                                 CPUStandbyState *cpu_st, DeviceState *dev,
-                                 Error **errp);
-
-void acpi_cpu_standby_cb(CPUStandbyState *cpu_st, DeviceState *dev,
-                         Error **errp);
-
-void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
-                         CPUStandbyState *state, hwaddr base_addr);
 
 typedef struct CPUHotplugFeatures {
     bool acpi_1_compatible;
@@ -91,22 +68,11 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
                     const char *event_handler_method,
                     AmlRegionSpace rs);
 
-void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
-                            const char *event_handler_method);
-
 void acpi_cpu_ospm_status(CPUHotplugState *cpu_st, ACPIOSTInfoList ***list);
-void acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st,
-                                  ACPIOSTInfoList ***list);
 
 extern const VMStateDescription vmstate_cpu_hotplug;
 #define VMSTATE_CPU_HOTPLUG(cpuhp, state) \
     VMSTATE_STRUCT(cpuhp, state, 1, \
                    vmstate_cpu_hotplug, CPUHotplugState)
-
-extern const VMStateDescription vmstate_cpu_standby;
-#define VMSTATE_CPU_STANDBY(cpusb, state) \
-    VMSTATE_STRUCT(cpusb, state, 1, \
-                   vmstate_cpu_standby, CPUStandbyState)
-
 
 #endif

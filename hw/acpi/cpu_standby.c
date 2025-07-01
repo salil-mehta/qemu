@@ -1,6 +1,6 @@
 #include "qemu/osdep.h"
 #include "migration/vmstate.h"
-#include "hw/acpi/cpu.h"
+#include "hw/acpi/cpu_standby.h"
 #include "hw/core/cpu.h"
 #include "qapi/error.h"
 #include "qapi/qapi-events-acpi.h"
@@ -47,15 +47,17 @@ acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
     }
 }
 
-static bool check_cpu_enabled_status(DeviceState *dev)
+static bool acpi_check_cpu_enabled_status(DeviceState *dev)
 {
     CPUClass *k = dev ? CPU_GET_CLASS(dev) : NULL;
     CPUState *cpu = CPU(dev);
 
+    /* TODO: fetch state via property of device */
+#if 0
     if (cpu && (!k->cpu_enabled_status || k->cpu_enabled_status(cpu))) {
         return true;
     }
-
+#endif
     return false;
 }
 
@@ -72,11 +74,10 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
-    case ACPI_CPU_FLAGS_OFFSET_RW: /* pack and return is_* fields */
-        val |= check_cpu_enabled_status(DEVICE(cdev->cpu)) ? 1 : 0;
-        val |= cdev->is_inserting ? 2 : 0;
-        val |= cdev->is_removing  ? 4 : 0;
-        //val |= cdev->fw_remove  ? 16 : 0;
+    case ACPI_CPU_FLAGS_OFFSET_RW:
+        val |= acpi_check_cpu_enabled_status(DEVICE(cdev->cpu)) ? 1 : 0;
+        val |= cdev->devchk_pending ? 2 : 0;
+        val |= cdev->ejrqst_pending  ? 4 : 0;
         val |= cdev->cpu ? 32 : 0;
         trace_cpusb_acpi_read_flags(cpu_st->selector, val);
         break;
@@ -120,12 +121,12 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     case ACPI_CPU_FLAGS_OFFSET_RW: /* set is_* fields  */
         cdev = &cpu_st->devs[cpu_st->selector];
-        if (data & 2) { /* clear insert event */
-            cdev->is_inserting = false;
-            trace_cpusb_acpi_clear_inserting_evt(cpu_st->selector);
-        } else if (data & 4) { /* clear remove event */
-            cdev->is_removing = false;
-            trace_cpusb_acpi_clear_remove_evt(cpu_st->selector);
+        if (data & 2) { /* clear device-check pending event */
+            cdev->devchk_pending = false;
+            trace_cpusb_acpi_clear_devchk_evt(cpu_st->selector);
+        } else if (data & 4) { /* clear eject-request pending event */
+            cdev->ejrqst_pending = false;
+            trace_cpusb_acpi_clear_ejrqst_evt(cpu_st->selector);
         } else if (data & 8) {
             DeviceState *dev = NULL;
             StandbyHandler *handler = NULL;
@@ -134,7 +135,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
                 trace_cpusb_acpi_ejecting_invalid_cpu(cpu_st->selector);
                 break;
             }
-            /* 
+            /*
              * OSPM has returned with eject. Hence, it is now safe to put the
              * cpu device on standby
              */
@@ -154,10 +155,10 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
 
                 do {
                     cdev = &cpu_st->devs[iter];
-                    if (cdev->is_inserting || cdev->is_removing) {
+                    if (cdev->devchk_pending || cdev->ejrqst_pending) {
                         cpu_st->selector = iter;
                         trace_cpusb_acpi_cpu_has_events(cpu_st->selector,
-                            cdev->is_inserting, cdev->is_removing);
+                            cdev->devchk_pending, cdev->ejrqst_pending);
                         break;
                     }
                     iter = iter + 1 < cpu_st->dev_count ? iter + 1 : 0;
@@ -223,17 +224,6 @@ void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
 }
 
-static bool should_remain_acpi_present(DeviceState *dev)
-{
-    CPUClass *k = CPU_GET_CLASS(dev);
-    /*
-     * A system may contain CPUs that are always present on one die, NUMA node,
-     * or socket, yet may be non-present on another simultaneously. Check from
-     * architecture specific code.
-     */
-    return k->cpu_persistent_status && k->cpu_persistent_status(CPU(dev));
-}
-
 static AcpiCpuStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
 {
     CPUClass *k = CPU_GET_CLASS(dev);
@@ -248,9 +238,8 @@ static AcpiCpuStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void
-acpi_ged_device_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
-                          DeviceState *dev, Error **errp)
+void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
+                        DeviceState *dev, Error **errp)
 {
     AcpiCpuStatus *cdev;
 
@@ -261,10 +250,13 @@ acpi_ged_device_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
 
     assert(cdev->cpu);
 
-    // cdev->cpu = CPU(dev);
-    //if (dev->hotplugged) {
     if (phase_check(PHASE_MACHINE_READY)) {
-        cdev->is_inserting = true; /* ACPI device check in progress */
+        /*
+         * Tell OSPM via GED that a standby cpu is being resumed. Also, mark
+         * 'device-check' event pending for this cpu. This will eventually
+         * result in OSPM evaluating the ACPI _EVT method and scan of cpus
+         */
+        cdev->devchk_pending = true;
         acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
     }
 }
@@ -282,7 +274,11 @@ void acpi_cpu_standby_request_cb(StandbyHandler *handler,
 
     assert(cdev->cpu);
 
-    cdev->is_removing = true; /* ACPI device remove in progress */
+    /*
+     * Tell OSPM via GED that a cpu wants to go on standby. Also, mark
+     * 'eject-request' event pending for this cpu
+     */
+    cdev->ejrqst_pending = true;
     acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
 }
 
@@ -295,10 +291,7 @@ void acpi_cpu_standby_cb(CPUStandbyState *cpu_st,
     if (!cdev) {
         return;
     }
-
-    if (!should_remain_acpi_present(dev)) {
-        cdev->cpu = NULL;
-    }
+    /* TODO: possible handling here */
 }
 
 static const VMStateDescription vmstate_cpu_standby_sts = {
@@ -306,10 +299,10 @@ static const VMStateDescription vmstate_cpu_standby_sts = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_BOOL(is_inserting, AcpiCpuStatus),
-        VMSTATE_BOOL(is_removing, AcpiCpuStatus),
-        VMSTATE_UINT32(ost_event, AcpiCpuStatus),
-        VMSTATE_UINT32(ost_status, AcpiCpuStatus),
+        VMSTATE_BOOL(devchk_pending, AcpiCpuStandbyStatus),
+        VMSTATE_BOOL(ejrqst_pending, AcpiCpuStandbyStatus),
+        VMSTATE_UINT32(ost_event, AcpiCpuStandbyStatus),
+        VMSTATE_UINT32(ost_status, AcpiCpuStandbyStatus),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -342,10 +335,9 @@ const VMStateDescription vmstate_cpu_standby = {
 #define CPU_SELECTOR      "CSEL"
 #define CPU_COMMAND       "CCMD"
 #define CPU_DATA          "CDAT"
-#define CPU_INSERT_EVENT  "CINS"
-#define CPU_REMOVE_EVENT  "CRMV"
+#define CPU_DEVCHK_EVENT  "CDCK"
+#define CPU_EJECTRQ_EVENT "CEJR"
 #define CPU_EJECT_EVENT   "CEJ0"
-#define CPU_PRESENT       "CPRS"
 
 void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
                             const char *event_handler_method)
@@ -389,15 +381,13 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         aml_append(field, aml_reserved_field(ACPI_CPU_FLAGS_OFFSET_RW * 8));
         /* 1 if enabled, read only */
         aml_append(field, aml_named_field(CPU_ENABLED, 1));
-        /* 1 if present, read only */
-        aml_append(field, aml_named_field(CPU_PRESENT, 1));
-        /* (read) 1 if has a insert event. (write) 1 to clear event */
-        aml_append(field, aml_named_field(CPU_INSERT_EVENT, 1));
-        /* (read) 1 if has a remove event. (write) 1 to clear event */
-        aml_append(field, aml_named_field(CPU_REMOVE_EVENT, 1));
-        /* initiates device eject, write only */
+        /* (read) 1 if has a device-check event. (write) 1 to clear event */
+        aml_append(field, aml_named_field(CPU_DEVCHK_EVENT, 1));
+        /* (read) 1 if has a eject-request event. (write) 1 to clear event */
+        aml_append(field, aml_named_field(CPU_EJECTRQ_EVENT, 1));
+        /* OSPM evals ACPI _EJx, initiates cpu eject in Qemu, write only */
         aml_append(field, aml_named_field(CPU_EJECT_EVENT, 1));
-        aml_append(field, aml_reserved_field(3));
+        aml_append(field, aml_reserved_field(4));
         aml_append(field, aml_named_field(CPU_COMMAND, 8));
         aml_append(cpu_ctrl_dev, field);
 
@@ -417,11 +407,10 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         Aml *ctrl_lock = aml_name("%s.%s", cphp_res_path, CPU_LOCK);
         Aml *cpu_selector = aml_name("%s.%s", cphp_res_path, CPU_SELECTOR);
         Aml *is_enabled = aml_name("%s.%s", cphp_res_path, CPU_ENABLED);
-        Aml *is_present = aml_name("%s.%s", cphp_res_path, CPU_PRESENT);
         Aml *cpu_cmd = aml_name("%s.%s", cphp_res_path, CPU_COMMAND);
         Aml *cpu_data = aml_name("%s.%s", cphp_res_path, CPU_DATA);
-        Aml *ins_evt = aml_name("%s.%s", cphp_res_path, CPU_INSERT_EVENT);
-        Aml *rm_evt = aml_name("%s.%s", cphp_res_path, CPU_REMOVE_EVENT);
+        Aml *dvchk_evt = aml_name("%s.%s", cphp_res_path, CPU_DEVCHK_EVENT);
+        Aml *ejrq_evt = aml_name("%s.%s", cphp_res_path, CPU_EJECTRQ_EVENT);
         Aml *ej_evt = aml_name("%s.%s", cphp_res_path, CPU_EJECT_EVENT);
 
         aml_append(cpus_dev, aml_name_decl("_HID", aml_string("ACPI0010")));
@@ -445,28 +434,23 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         {
             Aml *idx = aml_arg(0);
             Aml *sta = aml_local(0);
-            Aml *ifctx2;
             Aml *else_ctx;
 
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
             aml_append(method, aml_store(idx, cpu_selector));
             aml_append(method, aml_store(zero, sta));
-            ifctx = aml_if(aml_equal(is_present, one));
+            ifctx = aml_if(aml_equal(is_enabled, one));
             {
-                ifctx2 = aml_if(aml_equal(is_enabled, one));
-                {
-                    /* cpu is present and enabled */
-                    aml_append(ifctx2, aml_store(aml_int(0xF), sta));
-                }
-                aml_append(ifctx, ifctx2);
-                else_ctx = aml_else();
-                {
-                    /* cpu is present but disabled */
-                    aml_append(else_ctx, aml_store(aml_int(0xD), sta));
-                }
-                aml_append(ifctx, else_ctx);
+                /* cpu is present and enabled */
+                aml_append(ifctx, aml_store(aml_int(0xF), sta));
             }
             aml_append(method, ifctx);
+            else_ctx = aml_else();
+            {
+                /* cpu is present but disabled */
+                aml_append(else_ctx, aml_store(aml_int(0xD), sta));
+            }
+            aml_append(method, else_ctx);
             aml_append(method, aml_release(ctrl_lock));
             aml_append(method, aml_return(sta));
         }
@@ -485,16 +469,15 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
         method = aml_method(CPU_SCAN_METHOD, 0, AML_SERIALIZED);
         {
+            Aml *if_devchk, if_ejrq;
             Aml *has_event = aml_local(0); /* Local0: Loop control flag */
             Aml *uid = aml_local(1); /* Local1: Current CPU UID */
             /* Constants */
-            Aml *dev_chk = aml_int(1); /* Notify: device check for insert */
+            Aml *dev_chk = aml_int(1); /* Notify: device check to enable */
             Aml *eject_req = aml_int(3); /* Notify: eject for removal */
             Aml *next_cpu_cmd = aml_int(ACPI_GET_NEXT_CPU_WITH_EVENT_CMD);
-
             /* Acquire CPU lock */
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
-
             /* Initialize loop */
             aml_append(method, aml_store(zero, uid));
             aml_append(method, aml_store(one, has_event));
@@ -520,28 +503,28 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
                 /* Set UID to scanned result */
                 aml_append(while_ctx, aml_store(cpu_data, uid));
 
-                /* Handle Insert Event */
-                Aml *if_ins = aml_if(aml_equal(ins_evt, one));
+                /* send CPU resume/device-check event to OSPM */
+                Aml *if_devchk = aml_if(aml_equal(dvchk_evt, one));
                 {
-                    aml_append(if_ins,
+                    aml_append(if_devchk,
                         aml_call2(CPU_NOTIFY_METHOD, uid, dev_chk));
-                    /* clear insert (device check) event */
-                    aml_append(if_ins, aml_store(one, ins_evt));
-                    aml_append(if_ins, aml_store(one, has_event));
+                    /* clear local device-check event sent flag */
+                    aml_append(if_devchk, aml_store(one, dvchk_evt));
+                    aml_append(if_devchk, aml_store(one, has_event));
                 }
-                aml_append(while_ctx, if_ins);
+                aml_append(while_ctx, if_devchk);
 
-                /* Handle Remove Event */
+                /* send CPU standby/eject-request event to OSPM */
                 Aml *else_ctx = aml_else();
-                Aml *if_rm = aml_if(aml_equal(rm_evt, one));
+                Aml *if_ejrq = aml_if(aml_equal(ejrq_evt, one));
                 {
-                    aml_append(if_rm,
+                    aml_append(if_ejrq,
                         aml_call2(CPU_NOTIFY_METHOD, uid, eject_req));
-                    /* clear remove event */
-                    aml_append(if_rm, aml_store(one, rm_evt));
-                    aml_append(if_rm, aml_store(one, has_event));
+                    /* clear local eject-request event sent flag */
+                    aml_append(if_ejrq, aml_store(one, ejrq_evt));
+                    aml_append(if_ejrq, aml_store(one, has_event));
                 }
-                aml_append(else_ctx, if_rm);
+                aml_append(else_ctx, if_ejrq);
                 aml_append(while_ctx, else_ctx);
 
                 /* Increment UID */
@@ -574,7 +557,6 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         for (i = 0; i < arch_ids->len; i++) {
             Aml *dev;
             Aml *uid = aml_int(i);
-            GArray *madt_buf = g_array_new(0, 1, 1);
             int arch_id = arch_ids->cpus[i].arch_id;
 
             dev = aml_device(CPU_NAME_FMT, i);
