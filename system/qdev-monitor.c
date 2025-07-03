@@ -757,7 +757,7 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     return ret;
 }
 
-DeviceState *qdev_device_enable(QDict *opts, Error **errp)
+DeviceState *qdev_device_resume(QDict *opts, Error **errp)
 {
     ERRP_GUARD();
     DeviceClass *dc;
@@ -796,9 +796,9 @@ DeviceState *qdev_device_enable(QDict *opts, Error **errp)
         return NULL;
     }
 
-    if (phase_check(PHASE_MACHINE_READY)) {
-        error_setg(errp, "device '%s' does not support standby/resume at this"
-                   " stage", dev->name);
+    if (!phase_check(PHASE_MACHINE_READY)) {
+        error_setg(errp, "device '%s' does not support resume at this stage",
+                   dev->name);
         return NULL;
     }
 
@@ -946,17 +946,18 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
     object_unref(OBJECT(dev));
 }
 
-void qmp_device_enable(QDict *qdict, QObject **ret_data, Error **errp)
+void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
 {
     DeviceState *dev;
 
     if (!monitor_cur_is_qmp()) {
         return;
     }
-    dev = qdev_device_enable(opts, errp);
+
+    dev = qdev_device_resume(opts, errp);
     if (!dev) {
-        error_setg(errp, "Device %s is already in the "
-                             "process of unplug", id);
+        error_setg(errp, "could not resume the device");
+        return;
     }
 }
 
@@ -1062,15 +1063,15 @@ void hmp_device_del(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, err);
 }
 
-void hmp_device_enable(Monitor *mon, const QDict *qdict)
+void hmp_device_resume(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
 
-    qmp_device_enable((QDict *)qdict, NULL, &err);
+    qmp_device_resume((QDict *)qdict, NULL, &err);
     hmp_handle_error(mon, err);
 }
 
-void qmp_device_disable(const char *id, Error **errp)
+void qmp_device_standby(const char *id, Error **errp)
 {
     DeviceState *dev = find_device_state(id, errp);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
@@ -1107,13 +1108,13 @@ void qmp_device_disable(const char *id, Error **errp)
     qdev_standby(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp);
 }
 
-void hmp_device_disable(Monitor *mon, const QDict *qdict)
+void hmp_device_standby(Monitor *mon, const QDict *qdict)
 {
     const char *id = qdict_get_str(qdict, "id");
     Error *err = NULL;
 
     /* TBD: to be replaced by the enable counterpart later */
-    qmp_device_disable(id, &err);
+    qmp_device_standby(id, &err);
     hmp_handle_error(mon, err);
 }
 

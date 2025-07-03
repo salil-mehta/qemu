@@ -362,7 +362,7 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
     return object_property_set_bool(OBJECT(dev), "standby", true, errp);
 }
 
-void qdev_resume(DeviceState *dev, Error **errp)
+bool qdev_resume(DeviceState *dev, Error **errp)
 {
     object_property_set_bool(OBJECT(dev), "standby", false, errp);
 }

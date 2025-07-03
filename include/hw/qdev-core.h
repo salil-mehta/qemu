@@ -544,7 +544,7 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
  * Return: true on success, else false setting @errp with error
  */
 bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp);
-void qdev_resume(DeviceState *dev);
+bool qdev_resume(DeviceState *dev);
 
 /**
  * qdev_unrealize: Unrealize a device

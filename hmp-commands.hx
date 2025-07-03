@@ -708,6 +708,36 @@ SRST
 ERST
 
     {
+        .name       = "device_resume",
+        .args_type  = "device:O",
+        .params     = "driver[,prop=value][,...]",
+        .help       = "resume device from standby mode, like -device on the command line",
+        .cmd        = hmp_device_resume,
+        .command_completion = device_resume_completion,
+    },
+
+SRST
+``device_resume`` *config*
+  Resume device.
+ERST
+
+    {
+        .name       = "device_standby",
+        .args_type  = "id:s",
+        .params     = "device",
+        .help       = "put device on standby mode",
+        .cmd        = hmp_device_standby,
+        .command_completion = device_standby_completion,
+    },
+
+SRST
+``device_standby`` *id*
+  Remove device *id*. *id* may be a short ID
+  or a QOM object path.
+#if defined(CONFIG_DEVSTATE)
+ERST
+
+    {
         .name       = "device_state",
         .args_type  = "device:0,`state:s",
         .params     = "driver[,prop=value][,...] [enable|disable]",
@@ -719,6 +749,7 @@ ERST
 SRST
 ``device_state`` *config*
   change device state.
+#endif
 ERST
 
     {
