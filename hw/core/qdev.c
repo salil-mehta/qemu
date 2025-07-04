@@ -352,7 +352,7 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 
     if (bus) {
         error_setg(errp, "Device %s does not supports standby/resume",
-                   object_get_typename(obj));
+                   object_get_typename(OBJECT(dev)));
         return false;
     } else {
         /* for devices like cpu */
@@ -364,7 +364,7 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 
 bool qdev_resume(DeviceState *dev, Error **errp)
 {
-    object_property_set_bool(OBJECT(dev), "standby", false, errp);
+    return object_property_set_bool(OBJECT(dev), "standby", false, errp);
 }
 
 bool qdev_machine_modified(void)

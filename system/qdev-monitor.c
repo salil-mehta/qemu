@@ -784,21 +784,23 @@ DeviceState *qdev_device_resume(QDict *opts, Error **errp)
         return NULL;
     }
 
-    dev = qdev_find_standby_device(opts, from_json, errp);
+    dev = qdev_find_standby_device(opts, false, errp);
     if (*errp) {
         error_setg(errp, "unexpected error in finding standby device %s",
                driver);
         return NULL;
     }
 
+#if 0
     if (!dev) {
         qdev_printf("could not find device for driver %s\n", driver);
         return NULL;
     }
+#endif
 
     if (!phase_check(PHASE_MACHINE_READY)) {
         error_setg(errp, "device '%s' does not support resume at this stage",
-                   dev->name);
+                   dev->id);
         return NULL;
     }
 

@@ -295,7 +295,7 @@ static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-static void acpi_ged_standby_request_cb(StandbyHandler *handler,
+static void acpi_ged_device_standby_request_cb(StandbyHandler *handler,
                                        DeviceState *dev, Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
@@ -308,7 +308,7 @@ static void acpi_ged_standby_request_cb(StandbyHandler *handler,
     }
 }
 
-static void acpi_ged_standby_cb(StandbyHandler *handler, DeviceState *dev,
+static void acpi_ged_device_standby_cb(StandbyHandler *handler, DeviceState *dev,
                                 Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
@@ -556,8 +556,8 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug = acpi_ged_unplug_cb;
 
     sc->exit_standby = acpi_ged_device_resume_cb;
-    sc->standby_request = acpi_ged_standby_request_cb;
-    sc->enter_standby = acpi_ged_standby_cb;
+    sc->standby_request = acpi_ged_device_standby_request_cb;
+    sc->enter_standby = acpi_ged_device_standby_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;
     adevc->send_event = acpi_ged_send_event;

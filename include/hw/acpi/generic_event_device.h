@@ -63,6 +63,7 @@
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/ghes.h"
 #include "hw/acpi/cpu.h"
+#include "hw/acpi/cpu_standby.h"
 #include "qom/object.h"
 
 #define ACPI_POWER_BUTTON_DEVICE "PWRB"
@@ -90,9 +91,8 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 #define GED_DEVICE      "GED"
 #define AML_GED_EVT_REG "EREG"
 #define AML_GED_EVT_SEL "ESEL"
-#define AML_GED_EVT_CPUHP_SCAN_METHOD "\\_SB.GED.HSCN"
+#define AML_GED_EVT_CPUHP_SCAN_METHOD "\\_SB.GED.CSCN"
 #define AML_GED_EVT_CPUSB_SCAN_METHOD "\\_SB.GED.SSCN"
-
 
 /*
  * Platforms need to specify the GED event bitmap
