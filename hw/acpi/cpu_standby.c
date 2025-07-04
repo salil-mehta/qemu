@@ -20,7 +20,7 @@ enum {
 };
 
 static ACPIOSTInfo *
-acpi_cpu_device_standby_status(int idx, AcpiCpuStatus *cdev)
+acpi_cpu_device_standby_status(int idx, AcpiCpuStandbyStatus *cdev)
 {
     ACPIOSTInfo *info = g_new0(ACPIOSTInfo, 1);
 
@@ -49,11 +49,12 @@ acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
 
 static bool acpi_check_cpu_enabled_status(DeviceState *dev)
 {
+#if 0
     CPUClass *k = dev ? CPU_GET_CLASS(dev) : NULL;
     CPUState *cpu = CPU(dev);
 
     /* TODO: fetch state via property of device */
-#if 0
+
     if (cpu && (!k->cpu_enabled_status || k->cpu_enabled_status(cpu))) {
         return true;
     }
@@ -66,7 +67,7 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
     uint64_t val = 0;
     CPUStandbyState *cpu_st = opaque;
-    AcpiCpuStatus *cdev;
+    AcpiCpuStandbyStatus *cdev;
 
     if (cpu_st->selector >= cpu_st->dev_count) {
         return val;
@@ -102,7 +103,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
                                  unsigned int size)
 {
     CPUStandbyState *cpu_st = opaque;
-    AcpiCpuStatus *cdev;
+    AcpiCpuStandbyStatus *cdev;
     ACPIOSTInfo *info;
 
     assert(cpu_st->dev_count);
@@ -129,7 +130,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
             trace_cpusb_acpi_clear_ejrqst_evt(cpu_st->selector);
         } else if (data & 8) {
             DeviceState *dev = NULL;
-            StandbyHandler *handler = NULL;
+            //StandbyHandler *handler = NULL;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpusb_acpi_ejecting_invalid_cpu(cpu_st->selector);
@@ -141,8 +142,9 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
              */
             trace_cpusb_acpi_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            handler = qdev_get_standby_handler(dev);
-            standby_handler_enter(handler, dev, NULL);
+            //handler = qdev_get_standby_handler(dev);
+            //standby_handler_enter(handler, dev, NULL);
+            qdev_standby(dev, NULL);
             //object_unparent(OBJECT(dev));
         }
         break;

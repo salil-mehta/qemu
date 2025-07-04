@@ -29,14 +29,14 @@ typedef struct AcpiCpuStandbyStatus {
     bool ejrqst_pending; /* eject-request pending */
     uint32_t ost_event;
     uint32_t ost_status;
-} AcpiCpuStatus;
+} AcpiCpuStandbyStatus;
 
 typedef struct CPUStandbyState {
     MemoryRegion ctrl_reg;
     uint32_t selector;
     uint8_t command;
     uint32_t dev_count;
-    AcpiCpuStatus *devs;
+    AcpiCpuStandbyStatus *devs;
 } CPUStandbyState;
 
 void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,

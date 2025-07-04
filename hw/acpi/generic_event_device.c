@@ -279,7 +279,7 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
     } else {
         error_setg(errp, "acpi: device unplug for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
-    }s
+    }
 }
 
 static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
@@ -482,7 +482,7 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
         switch (event) {
         case ACPI_GED_CPU_STANDBY_EVT:
             /* initialize CPU Standby related regions */
-            memory_region_init(&s->container_cpuhp, OBJECT(dev),
+            memory_region_init(&s->container_cpusb, OBJECT(dev),
                                 "cpusb container",
                                 ACPI_CPU_STANDBY_REG_LEN);
             sysbus_init_mmio(sbd, &s->container_cpusb);

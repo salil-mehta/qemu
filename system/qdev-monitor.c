@@ -808,7 +808,7 @@ DeviceState *qdev_device_resume(QDict *opts, Error **errp)
         return NULL;
     }
 
-    qemu_opts_del(opts);
+    //qemu_opts_del(opts);
     return dev;
 }
 
@@ -1200,6 +1200,31 @@ void device_del_completion(ReadLineState *rs, int nb_args, const char *str)
 
     readline_set_completion_index(rs, strlen(str));
     peripheral_device_del_completion(rs, str);
+}
+
+void device_resume_completion(ReadLineState *rs, int nb_args, const char *str)
+{
+    GSList *list, *elt;
+    size_t len;
+
+    if (nb_args != 2) {
+        return;
+    }
+
+    len = strlen(str);
+    readline_set_completion_index(rs, len);
+    list = elt = object_class_get_list(TYPE_DEVICE, false);
+    while (elt) {
+        DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
+                                             TYPE_DEVICE);
+
+        if (dc->user_creatable) {
+            readline_add_completion_of(rs, str,
+                                object_class_get_name(OBJECT_CLASS(dc)));
+        }
+        elt = elt->next;
+    }
+    g_slist_free(list);
 }
 
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp)

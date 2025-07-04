@@ -348,7 +348,7 @@ void qdev_assert_realized_properly(void)
 
 bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 {
-    assert(!dev->realized);
+    assert(dev->realized);
 
     if (bus) {
         error_setg(errp, "Device %s does not supports standby/resume",
@@ -718,6 +718,14 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
         smp_wmb();
 
         handler = qdev_get_standby_handler(dev);
+        /* check if device need to do this asynchronously */
+        if (handler->standby_request) {
+             standby_handler_request(handler, dev, &local_err);
+             if (local_err != NULL) {
+                 goto fail;
+             }
+        }
+
         if (handler) {
             standby_handler_enter(handler, dev, &local_err);
             if (local_err != NULL) {

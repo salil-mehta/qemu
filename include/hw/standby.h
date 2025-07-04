@@ -56,9 +56,9 @@ struct StandbyHandlerClass {
     InterfaceClass parent;
 
     /* <public> */
-    hotplug_fn standby_request;
-    hotplug_fn enter_standby;
-    hotplug_fn exit_standby;
+    standby_fn standby_request;
+    standby_fn enter_standby;
+    standby_fn exit_standby;
 };
 
 
