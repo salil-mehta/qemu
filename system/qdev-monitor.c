@@ -1077,7 +1077,6 @@ void qmp_device_standby(const char *id, Error **errp)
 {
     DeviceState *dev = find_device_state(id, errp);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
-    StandbyHandler *handler;
     Error *local_err = NULL;
 
     if (!dev) {

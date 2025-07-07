@@ -362,6 +362,35 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
     return object_property_set_bool(OBJECT(dev), "standby", true, errp);
 }
 
+void qdev_standby_now(DeviceState *dev, Error **errp)
+{
+    StandbyHandler *handler;
+    Error *local_err = NULL;
+
+    assert(dev->realized);
+
+    /*
+     * we are here because OSPM has already issued ACPI _EJx to the platform
+     * after eject-request notification was sent to the OSPM to perform graceful
+     * eject of the device.
+     */
+    handler = qdev_get_standby_handler(dev);
+    assert(handler);
+
+    standby_handler_enter(handler, dev, &local_err);
+    if (local_err != NULL) {
+        return;
+    }
+
+    qatomic_set(&dev->standby, true);
+    smp_wmb();
+
+    /* do not migrate the device in standby state */
+    if (qdev_get_vmsd(dev)) {
+        vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
+    }
+}
+
 bool qdev_resume(DeviceState *dev, Error **errp)
 {
     return object_property_set_bool(OBJECT(dev), "standby", false, errp);
@@ -713,37 +742,26 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
         return;
     }
 
-    if (value && !dev->standby) {
-        qatomic_set(&dev->standby, value);
-        smp_wmb();
+    handler = qdev_get_standby_handler(dev);
+    assert(handler);
 
-        handler = qdev_get_standby_handler(dev);
+    if (value && !dev->standby) {
         /* check if device need to do this asynchronously */
         if (handler->standby_request) {
              standby_handler_request(handler, dev, &local_err);
              if (local_err != NULL) {
                  goto fail;
              }
-        }
-
-        if (handler) {
-            standby_handler_enter(handler, dev, &local_err);
+        } else {
+            qdev_standby_now(dev, &local_err);
             if (local_err != NULL) {
                 goto fail;
             }
         }
-
-        /* do not migrate the device in disabled state */
-        if (qdev_get_vmsd(dev)) {
-            vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
-        }
     } else if (!value && dev->standby) {
-        handler = qdev_get_standby_handler(dev);
-        if (handler) {
-             standby_handler_exit(handler, dev, &local_err);
-             if (local_err != NULL) {
-                 goto fail;
-             }
+        standby_handler_exit(handler, dev, &local_err);
+        if (local_err != NULL) {
+            goto fail;
         }
 
         if (qdev_get_vmsd(dev)) {
@@ -757,7 +775,7 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
             }
         }
 
-        qatomic_store_release(&dev->realized, value);
+        qatomic_store_release(&dev->standby, value);
     }
 
     assert(local_err == NULL);

@@ -130,7 +130,6 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
             trace_cpusb_acpi_clear_ejrqst_evt(cpu_st->selector);
         } else if (data & 8) {
             DeviceState *dev = NULL;
-            //StandbyHandler *handler = NULL;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpusb_acpi_ejecting_invalid_cpu(cpu_st->selector);
@@ -142,10 +141,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
              */
             trace_cpusb_acpi_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            //handler = qdev_get_standby_handler(dev);
-            //standby_handler_enter(handler, dev, NULL);
-            qdev_standby(dev, NULL);
-            //object_unparent(OBJECT(dev));
+            qdev_standby_now(dev, NULL);
         }
         break;
     case ACPI_CPU_CMD_OFFSET_WR:
