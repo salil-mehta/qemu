@@ -956,7 +956,7 @@ void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
         return;
     }
 
-    dev = qdev_device_resume(opts, errp);
+    dev = qdev_device_resume(qdict, errp);
     if (!dev) {
         error_setg(errp, "could not resume the device");
         return;
@@ -1077,7 +1077,6 @@ void qmp_device_standby(const char *id, Error **errp)
 {
     DeviceState *dev = find_device_state(id, errp);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
-    Error *local_err = NULL;
 
     if (!dev) {
         error_setg(errp, "Device '%s' not found!", id);
@@ -1203,27 +1202,10 @@ void device_del_completion(ReadLineState *rs, int nb_args, const char *str)
 
 void device_resume_completion(ReadLineState *rs, int nb_args, const char *str)
 {
-    GSList *list, *elt;
-    size_t len;
+}
 
-    if (nb_args != 2) {
-        return;
-    }
-
-    len = strlen(str);
-    readline_set_completion_index(rs, len);
-    list = elt = object_class_get_list(TYPE_DEVICE, false);
-    while (elt) {
-        DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
-                                             TYPE_DEVICE);
-
-        if (dc->user_creatable) {
-            readline_add_completion_of(rs, str,
-                                object_class_get_name(OBJECT_CLASS(dc)));
-        }
-        elt = elt->next;
-    }
-    g_slist_free(list);
+void device_standby_completion(ReadLineState *rs, int nb_args, const char *str)
+{
 }
 
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp)

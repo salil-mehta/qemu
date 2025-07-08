@@ -374,7 +374,7 @@ void qdev_standby_now(DeviceState *dev, Error **errp)
      * after eject-request notification was sent to the OSPM to perform graceful
      * eject of the device.
      */
-    handler = qdev_get_standby_handler(dev);
+    handler = standby_get_handler(dev);
     assert(handler);
 
     standby_handler_enter(handler, dev, &local_err);
@@ -731,6 +731,7 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    StandbyHandlerClass *sdc;
     StandbyHandler *handler;
     Error *local_err = NULL;
 
@@ -742,12 +743,13 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
         return;
     }
 
-    handler = qdev_get_standby_handler(dev);
+    handler = standby_get_handler(dev);
     assert(handler);
 
     if (value && !dev->standby) {
+        sdc = STANDBY_HANDLER_GET_CLASS(handler);
         /* check if device need to do this asynchronously */
-        if (handler->standby_request) {
+        if (sdc->standby_request) {
              standby_handler_request(handler, dev, &local_err);
              if (local_err != NULL) {
                  goto fail;

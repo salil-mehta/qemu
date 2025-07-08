@@ -16,7 +16,7 @@
 #include "qemu/module.h"
 #include "hw/qdev-core.h"
 
-StandbyHandler *qdev_get_standby_handler(DeviceState *dev)
+StandbyHandler *standby_get_handler(DeviceState *dev)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);

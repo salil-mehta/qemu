@@ -175,7 +175,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
         case ACPI_OST_STATUS_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_status = data;
-           info = acpi_cpu_device_status(cpu_st->selector, cdev);
+           info = acpi_cpu_device_standby_status(cpu_st->selector, cdev);
            qapi_event_send_acpi_device_ost(info);
            qapi_free_ACPIOSTInfo(info);
            trace_cpusb_acpi_write_ost_status(cpu_st->selector,
@@ -222,7 +222,7 @@ void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
 }
 
-static AcpiCpuStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
+static AcpiCpuStandbyStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
 {
     CPUClass *k = CPU_GET_CLASS(dev);
     uint64_t cpu_arch_id = k->get_arch_id(CPU(dev));
@@ -239,7 +239,7 @@ static AcpiCpuStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
 void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
-    AcpiCpuStatus *cdev;
+    AcpiCpuStandbyStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -263,7 +263,7 @@ void acpi_cpu_standby_request_cb(StandbyHandler *handler,
                                 CPUStandbyState *cpu_st,
                                 DeviceState *dev, Error **errp)
 {
-    AcpiCpuStatus *cdev;
+    AcpiCpuStandbyStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -283,7 +283,7 @@ void acpi_cpu_standby_request_cb(StandbyHandler *handler,
 void acpi_cpu_standby_cb(CPUStandbyState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
-    AcpiCpuStatus *cdev;
+    AcpiCpuStandbyStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -314,7 +314,7 @@ const VMStateDescription vmstate_cpu_standby = {
         VMSTATE_UINT8(command, CPUStandbyState),
         VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, CPUStandbyState, dev_count,
                                              vmstate_cpu_standby_sts,
-                                             AcpiCpuStatus),
+                                             AcpiCpuStandbyStatus),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -467,7 +467,6 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
         method = aml_method(CPU_SCAN_METHOD, 0, AML_SERIALIZED);
         {
-            Aml *if_devchk, if_ejrq;
             Aml *has_event = aml_local(0); /* Local0: Loop control flag */
             Aml *uid = aml_local(1); /* Local1: Current CPU UID */
             /* Constants */
@@ -501,7 +500,7 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
                 /* Set UID to scanned result */
                 aml_append(while_ctx, aml_store(cpu_data, uid));
 
-                /* send CPU resume/device-check event to OSPM */
+                /* send CPU device-check(resume) event to OSPM */
                 Aml *if_devchk = aml_if(aml_equal(dvchk_evt, one));
                 {
                     aml_append(if_devchk,
@@ -512,7 +511,10 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
                 }
                 aml_append(while_ctx, if_devchk);
 
-                /* send CPU standby/eject-request event to OSPM */
+                /*
+                 * send CPU eject-request(standby-request) event to OSPM to
+                 * gracefully handle OSPM related tasks running on this CPU
+                 */
                 Aml *else_ctx = aml_else();
                 Aml *if_ejrq = aml_if(aml_equal(ejrq_evt, one));
                 {
@@ -555,7 +557,6 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         for (i = 0; i < arch_ids->len; i++) {
             Aml *dev;
             Aml *uid = aml_int(i);
-            int arch_id = arch_ids->cpus[i].arch_id;
 
             dev = aml_device(CPU_NAME_FMT, i);
             aml_append(dev, aml_name_decl("_HID", aml_string("ACPI0007")));

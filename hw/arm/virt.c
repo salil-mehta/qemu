@@ -2089,7 +2089,7 @@ virt_cpu_standby_enter(StandbyHandler *handler, DeviceState *dev, Error **errp)
     Error *local_err = NULL;
 
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->standby_enter(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
     if (local_err) {
         goto fail;
     }
@@ -3723,7 +3723,7 @@ virt_machine_device_standby_exit(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-static HotplugHandler *virt_machine_get_standby_handler(MachineState *machine,
+static StandbyHandler *virt_machine_get_standby_handler(MachineState *machine,
                                                         DeviceState *dev)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
@@ -3877,8 +3877,8 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     assert(!mc->get_standby_handler);
     mc->get_standby_handler = virt_machine_get_standby_handler;
     sc->standby_request = virt_machine_device_standby_request;
-    sc->standby_enter = virt_machine_device_standby_enter;
-    sc->standby_exit = virt_machine_device_standby_exit;
+    sc->enter_standby = virt_machine_device_standby_enter;
+    sc->exit_standby = virt_machine_device_standby_exit;
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;

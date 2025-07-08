@@ -61,6 +61,7 @@ struct StandbyHandlerClass {
     standby_fn exit_standby;
 };
 
+StandbyHandler *standby_get_handler(DeviceState *dev);
 
 void standby_handler_request(StandbyHandler *handler, DeviceState *dev,
                                 Error **errp);

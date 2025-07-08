@@ -587,15 +587,6 @@ HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
 void qdev_unplug(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
-/**
- * qdev_get_standby_handler() - Get handler responsible for standby mode
- * @dev: the device we want the STANDBY_HANDLER for.
- *
- * Return: pointer to object that implements TYPE_STANDBY_HANDLER interface
- * or NULL if there aren't any.
- */
-StandbyHandler *qdev_get_standby_handler(DeviceState *dev);
-void qdev_disable(DeviceState *dev, Error **errp);
 
 void qdev_machine_creation_done(void);
 bool qdev_machine_modified(void);

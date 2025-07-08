@@ -734,22 +734,6 @@ SRST
 ``device_standby`` *id*
   Remove device *id*. *id* may be a short ID
   or a QOM object path.
-#if defined(CONFIG_DEVSTATE)
-ERST
-
-    {
-        .name       = "device_state",
-        .args_type  = "device:0,`state:s",
-        .params     = "driver[,prop=value][,...] [enable|disable]",
-        .help       = "change device state to [enable|disable], like -device on the command line",
-        .cmd        = hmp_device_state,
-        .command_completion = device_state_completion,
-    },
-
-SRST
-``device_state`` *config*
-  change device state.
-#endif
 ERST
 
     {
