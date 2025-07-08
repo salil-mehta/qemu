@@ -130,10 +130,12 @@ typedef struct CPUArchId {
  * CPUArchIdList:
  * @len - number of @CPUArchId items in @cpus array
  * @cpus - array of present or possible CPUs for current machine configuration
+ * @standby_cpus - array of standby CPUs (if supported by machine)
  */
 typedef struct {
     int len;
     CPUArchId cpus[];
+    CPUArchId standby_cpus[];
 } CPUArchIdList;
 
 /**
@@ -314,6 +316,7 @@ struct MachineClass {
     CpuInstanceProperties (*cpu_index_to_instance_props)(MachineState *machine,
                                                          unsigned cpu_index);
     const CPUArchIdList *(*possible_cpu_arch_ids)(MachineState *machine);
+    const CPUArchIdList *(*standby_cpu_arch_ids)(MachineState *machine);
     int64_t (*get_default_cpu_node_id)(const MachineState *ms, int idx);
     ram_addr_t (*fixup_ram_size)(ram_addr_t size);
     uint64_t smbios_memory_device_size;

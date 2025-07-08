@@ -519,7 +519,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
     s->cpu = g_new0(GICv3CPUState, s->num_cpu);
 
     for (i = 0; i < s->num_cpu; i++) {
-        CPUState *cpu = qemu_get_possible_cpu(i);
+        CPUState *cpu = qemu_get_standby_cpu(i);
         uint64_t cpu_affid;
 
         /*

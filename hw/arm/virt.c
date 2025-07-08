@@ -1943,6 +1943,9 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
                            cpu_model_from_type(qdict_get_try_str(device_opts,
                            "driver")));
     if (!oc) {
+        error_setg(errp, "unsupported ARM CPU Type (%s) specified",
+                   cpu_model_from_type(qdict_get_try_str(device_opts, "driver"))
+                   );
         return NULL;
     }
 
@@ -1954,16 +1957,20 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
         thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
     } else {
         if ((qdict_get_try_str(device_opts,"socket-id"))) {
-            socket_id = strtol(qdict_get_try_str(device_opts, "socket-id"), NULL, 10);
+            socket_id = strtol(qdict_get_try_str(device_opts, "socket-id"),
+                               NULL, 10);
         }
         if ((qdict_get_try_str(device_opts,"cluster-id"))) {
-            cluster_id = strtol(qdict_get_try_str(device_opts, "cluster-id"), NULL, 10);
+            cluster_id = strtol(qdict_get_try_str(device_opts, "cluster-id"),
+                                NULL, 10);
         }
         if ((qdict_get_try_str(device_opts,"core-id"))) {
-            core_id = strtol(qdict_get_try_str(device_opts, "core-id"), NULL, 10);
+            core_id = strtol(qdict_get_try_str(device_opts, "core-id"),
+                             NULL, 10);
         }
         if ((qdict_get_try_str(device_opts,"thread-id"))) {
-            thread_id = strtol(qdict_get_try_str(device_opts, "thread-id"), NULL, 10);
+            thread_id = strtol(qdict_get_try_str(device_opts, "thread-id"),
+                               NULL, 10);
         }
     }
 
@@ -1973,18 +1980,30 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
      * resulting in an appropriate error being returned.
      */
     if ((thread_id < 0) || (thread_id >= ms->smp.threads)) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid thread-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, thread_id);
         return NULL;
     }
 
     if ((core_id < 0) || (core_id >= ms->smp.cores)) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid core-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, core_id);
         return NULL;
     }
 
     if ((cluster_id < 0) || (cluster_id >= ms->smp.clusters)) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid cluster-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, cluster_id);
         return NULL;
     }
 
     if ((socket_id < 0) || (socket_id >= ms->smp.sockets)) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid socket-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, socket_id);
         return NULL;
     }
 
@@ -1995,7 +2014,7 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
     core_vcpu_num = core_id * ms->smp.threads;
     cpu_id = (sock_vcpu_num + clus_vcpu_num + core_vcpu_num) + thread_id;
 
-    cpu = qemu_get_possible_cpu(cpu_id);
+    cpu = qemu_get_standby_cpu(cpu_id);
     if (!cpu) {
         return NULL;
     }
@@ -2020,7 +2039,7 @@ virt_cpu_resume(StandbyHandler *handler, DeviceState *dev,
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
-    if (!mc->has_standby_cpus) {
+    if (!mc->cpus_can_standby) {
         error_setg(errp, "CPU standby/resume not supported on this machine");
         return;
     }
@@ -2056,7 +2075,7 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
-    if (!mc->has_standby_cpus) {
+    if (!mc->cpus_can_standby) {
         error_setg(errp, "CPU standby/resume not supported on this machine");
         return;
     }
@@ -3873,7 +3892,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
-    mc->has_standby_cpus = true;
+    mc->cpus_can_standby = true;
     assert(!mc->get_standby_handler);
     mc->get_standby_handler = virt_machine_get_standby_handler;
     sc->request_standby = virt_machine_device_request_standby;
