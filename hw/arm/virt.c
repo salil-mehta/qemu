@@ -2010,7 +2010,7 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
 }
 
 static void
-virt_cpu_resume_standby_exit(StandbyHandler *handler, DeviceState *dev,
+virt_cpu_resume(StandbyHandler *handler, DeviceState *dev,
                                Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
@@ -2046,7 +2046,7 @@ fail:
 }
 
 static void
-virt_cpu_standby_request(StandbyHandler *handler, DeviceState *dev,
+virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
                         Error **errp)
 {
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
@@ -2070,7 +2070,7 @@ virt_cpu_standby_request(StandbyHandler *handler, DeviceState *dev,
 
     /* intimate guest about this vCPU standby event */
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->standby_request(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    ssc->request_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
     if (local_err) {
         goto fail;
     }
@@ -3688,11 +3688,11 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
 }
 
 static void
-virt_machine_device_standby_request(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_request_standby(StandbyHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_standby_request(handler, dev, errp);
+        virt_cpu_request_standby(handler, dev, errp);
     } else {
         error_setg(errp, "virt: device standby request for unsupported device"
                    "type: %s", object_get_typename(OBJECT(dev)));
@@ -3712,11 +3712,11 @@ virt_machine_device_standby_enter(StandbyHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_machine_device_standby_exit(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_resume(StandbyHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_resume_standby_exit(handler, dev, errp);
+        virt_cpu_resume(handler, dev, errp);
     } else {
         error_setg(errp, "virt: device resume request for unsupported device"
                    "type: %s", object_get_typename(OBJECT(dev)));
@@ -3876,9 +3876,9 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     mc->has_standby_cpus = true;
     assert(!mc->get_standby_handler);
     mc->get_standby_handler = virt_machine_get_standby_handler;
-    sc->standby_request = virt_machine_device_standby_request;
+    sc->request_standby = virt_machine_device_request_standby;
     sc->enter_standby = virt_machine_device_standby_enter;
-    sc->exit_standby = virt_machine_device_standby_exit;
+    sc->exit_standby = virt_machine_device_resume;
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;

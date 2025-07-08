@@ -749,7 +749,7 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
     if (value && !dev->standby) {
         sdc = STANDBY_HANDLER_GET_CLASS(handler);
         /* check if device need to do this asynchronously */
-        if (sdc->standby_request) {
+        if (sdc->request_standby) {
              standby_handler_request(handler, dev, &local_err);
              if (local_err != NULL) {
                  goto fail;

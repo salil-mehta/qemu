@@ -32,8 +32,8 @@ void standby_handler_request(StandbyHandler *handler, DeviceState *dev,
 {
     StandbyHandlerClass *sdc = STANDBY_HANDLER_GET_CLASS(handler);
 
-    if (sdc->standby_request) {
-        sdc->standby_request(handler, dev, errp);
+    if (sdc->request_standby) {
+        sdc->request_standby(handler, dev, errp);
     }
 }
 

@@ -42,7 +42,7 @@ typedef struct CPUStandbyState {
 void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
                         DeviceState *dev, Error **errp);
 
-void acpi_cpu_standby_request_cb(StandbyHandler *handler,
+void acpi_cpu_request_standby_cb(StandbyHandler *handler,
                                  CPUStandbyState *cpu_st, DeviceState *dev,
                                  Error **errp);
 

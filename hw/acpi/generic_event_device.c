@@ -295,13 +295,13 @@ static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-static void acpi_ged_device_standby_request_cb(StandbyHandler *handler,
+static void acpi_ged_device_request_standby_cb(StandbyHandler *handler,
                                        DeviceState *dev, Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_standby_request_cb(handler, &s->cpusb_state, dev, errp);
+        acpi_cpu_request_standby_cb(handler, &s->cpusb_state, dev, errp);
     } else {
         error_setg(errp, "acpi: device standby request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -556,7 +556,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug = acpi_ged_unplug_cb;
 
     sc->exit_standby = acpi_ged_device_resume_cb;
-    sc->standby_request = acpi_ged_device_standby_request_cb;
+    sc->request_standby = acpi_ged_device_request_standby_cb;
     sc->enter_standby = acpi_ged_device_standby_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;

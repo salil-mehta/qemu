@@ -41,7 +41,7 @@ typedef void (*standby_fn)(StandbyHandler *handler, DeviceState *dev,
  * enter/exit functions.
  *
  * @parent: Opaque parent interface.
- * @standby_request: This standby request callback might be used to intimate the
+ * @request_standby: This standby request callback might be used to intimate the
                      kernel that active device is about to go on standby and
                      event could be used to initiate asynchronous device disable
                      handling if required.
@@ -56,7 +56,7 @@ struct StandbyHandlerClass {
     InterfaceClass parent;
 
     /* <public> */
-    standby_fn standby_request;
+    standby_fn request_standby;
     standby_fn enter_standby;
     standby_fn exit_standby;
 };
