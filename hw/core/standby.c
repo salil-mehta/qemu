@@ -10,11 +10,9 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-
 #include "qemu/osdep.h"
 #include "hw/standby.h"
 #include "qemu/module.h"
-#include "hw/qdev-core.h"
 #include "hw/boards.h"
 
 StandbyHandler *standby_get_handler(DeviceState *dev)
@@ -71,4 +69,3 @@ static void standby_handler_register_types(void)
 }
 
 type_init(standby_handler_register_types)
-
