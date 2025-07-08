@@ -15,6 +15,7 @@
 #include "hw/standby.h"
 #include "qemu/module.h"
 #include "hw/qdev-core.h"
+#include "hw/boards.h"
 
 StandbyHandler *standby_get_handler(DeviceState *dev)
 {

@@ -2027,7 +2027,7 @@ virt_cpu_resume_standby_exit(StandbyHandler *handler, DeviceState *dev,
 
     /* send cpu standby exit event (cpu enabled) to guest */
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->standby_exit(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
+    ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
     if (local_err) {
         goto fail;
     }
