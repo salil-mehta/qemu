@@ -1699,6 +1699,7 @@
 ##
 { 'struct': 'SMPConfiguration', 'data': {
      '*cpus': 'int',
+     '*active_cpus': 'int',
      '*drawers': 'int',
      '*books': 'int',
      '*sockets': 'int',

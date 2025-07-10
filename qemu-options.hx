@@ -280,10 +280,11 @@ SRST
 ERST
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
-    "-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets]\n"
-    "               [,dies=dies][,clusters=clusters][,modules=modules][,cores=cores]\n"
-    "               [,threads=threads]\n"
+    "-smp [[cpus=]n][,standbycpus=scpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
+    "               [,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules]\n"
+    "               [,cores=cores][,threads=threads]\n"
     "                set the number of initial CPUs to 'n' [default=1]\n"
+    "                standbycpus= additional number of present CPUs, but on standby mode(if supported)\n"
     "                maxcpus= maximum number of total CPUs, including\n"
     "                offline CPUs for hotplug, etc\n"
     "                drawers= number of drawers on the machine board\n"
@@ -305,14 +306,25 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      For a particular machine type board, an expected CPU topology hierarchy\n"
     "      can be defined through the supported sub-option. Unsupported parameters\n"
     "      can also be provided in addition to the sub-option, but their values\n"
-    "      must be set as 1 in the purpose of correct parsing.\n",
+    "      must be set as 1 in the purpose of correct parsing.\n"
+    "                                                         \n",
+    "      Standby CPUs: Some machine types do not support vCPU hotplug but their \n"
+    "      CPUs can be put on standby mode and can be kept hidden from the Guest\n"
+    "      OS and later made *active* through administrative action from QMP/HMP\n"
+    "      monitor. This is like a CPU hotplug, just that all standby CPUs are known\n"
+    "      and *present* in advance at the boot time. Meant for ARM Architecture\n"
+    "      like machines which do not support hotplug of CPUs\n",
     QEMU_ARCH_ALL)
 SRST
-``-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
-    Simulate a SMP system with '\ ``n``\ ' CPUs initially present on
-    the machine type board. On boards supporting CPU hotplug, the optional
-    '\ ``maxcpus``\ ' parameter can be set to enable further CPUs to be
-    added at runtime. When both parameters are omitted, the maximum number
+``-smp [[cpus=]n][,standbycpus=scpus][,maxcpus=maxcpus][,activecpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
+    Simulate a SMP system with '\ ``n``\ ' CPUs initially present & active on
+    the machine type board. Futhermore, on architectures that support Standby
+    CPUs, optional '\ ``scpus``\ 'parameter can be used to specify
+    *additional* present CPUs but which are on standby mode i.e. not active.
+    This is different than CPU hotplug where additional CPUs are not present.
+    On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
+    can be set to enable further CPUs to be added at runtime. When both
+    '\ ``n``\ ' & '\ ``maxcpus``\ 'parameters are omitted, the maximum number
     of CPUs will be calculated from the provided topology members and the
     initial CPU count will match the maximum number. When only one of them
     is given then the omitted one will be set to its counterpart's value.

@@ -352,6 +352,7 @@ typedef struct DeviceMemoryState {
 /**
  * CpuTopology:
  * @cpus: the number of present logical processors on the machine
+ * @active_cpus: the number of present & active(not on standby)
  * @drawers: the number of drawers on the machine
  * @books: the number of books in one drawer
  * @sockets: the number of sockets in one book
@@ -364,6 +365,7 @@ typedef struct DeviceMemoryState {
  */
 typedef struct CpuTopology {
     unsigned int cpus;
+    unsigned int active_cpus;
     unsigned int drawers;
     unsigned int books;
     unsigned int sockets;

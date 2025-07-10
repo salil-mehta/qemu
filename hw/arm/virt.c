@@ -2606,7 +2606,7 @@ static void machvirt_init(MachineState *machine)
     bool firmware_loaded;
     bool aarch64 = true;
     bool has_ged = !vmc->no_ged;
-    unsigned int smp_cpus = machine->smp.cpus;
+    unsigned int smp_cpus = machine->smp.cpus + machine->smp.scpus;
     unsigned int max_cpus = machine->smp.max_cpus;
 
     /*
