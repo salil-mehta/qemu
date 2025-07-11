@@ -2033,13 +2033,12 @@ virt_cpu_resume(StandbyHandler *handler, DeviceState *dev,
                                Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
-    MachineState *ms = MACHINE(handler);
-    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
-    if (!mc->cpus_can_standby) {
+    if (!dc->can_standby) {
         error_setg(errp, "CPU standby/resume not supported on this machine");
         return;
     }
@@ -2068,14 +2067,14 @@ static void
 virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
                         Error **errp)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     VirtMachineState *vms = VIRT_MACHINE(handler);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     ARMCPU *cpu = ARM_CPU(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
-    if (!mc->cpus_can_standby) {
+    if (!dc->can_standby) {
         error_setg(errp, "CPU standby/resume not supported on this machine");
         return;
     }
@@ -3902,7 +3901,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
-    mc->cpus_can_standby = true;
+    mc->has_standby_cpus = true;
     assert(!mc->get_standby_handler);
     mc->get_standby_handler = virt_machine_get_standby_handler;
     sc->request_standby = virt_machine_device_request_standby;

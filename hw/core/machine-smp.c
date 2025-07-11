@@ -168,8 +168,8 @@ void machine_parse_smp_config(MachineState *ms,
         cores = cores > 0 ? cores : 1;
         threads = threads > 0 ? threads : 1;
 
-        maxcpus = drawers * books * sockets * dies * clusters * modules *
-                  cores * threads;
+        maxcpus = drawers * books * sockets * dies * clusters *
+                    modules * cores * threads;
         cpus = maxcpus - scpus;
     } else {
         maxcpus = maxcpus > 0 ? maxcpus : cpus + scpus;
@@ -211,6 +211,7 @@ void machine_parse_smp_config(MachineState *ms,
                       (drawers * books * sockets * dies *
                        clusters * modules * cores);
         }
+
     }
 
     ms->smp.cpus = cpus;
@@ -228,6 +229,8 @@ void machine_parse_smp_config(MachineState *ms,
     mc->smp_props.has_clusters = config->has_clusters;
 
     /* sanity-check of the computed topology */
+    total_cpus = maxcpus = drawers * books * sockets * dies * clusters *
+                modules * cores * threads;
     if (total_cpus != maxcpus) {
         g_autofree char *topo_msg = cpu_hierarchy_to_string(ms);
         error_setg(errp, "Invalid CPU topology: "

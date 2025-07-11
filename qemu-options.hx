@@ -307,14 +307,13 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      can be defined through the supported sub-option. Unsupported parameters\n"
     "      can also be provided in addition to the sub-option, but their values\n"
     "      must be set as 1 in the purpose of correct parsing.\n"
-    "                                                         \n",
+    "                                                         \n"
     "      Standby CPUs: Some machine types do not support vCPU hotplug but their \n"
     "      CPUs can be put on standby mode and can be kept hidden from the Guest\n"
     "      OS and later made *active* through administrative action from QMP/HMP\n"
     "      monitor. This is like a CPU hotplug, just that all standby CPUs are known\n"
     "      and *present* in advance at the boot time. Meant for ARM Architecture\n"
-    "      like machines which do not support hotplug of CPUs\n",
-    QEMU_ARCH_ALL)
+    "      like machines which do not support hotplug of CPUs\n", QEMU_ARCH_ALL)
 SRST
 ``-smp [[cpus=]n][,standbycpus=scpus][,maxcpus=maxcpus][,activecpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
     Simulate a SMP system with '\ ``n``\ ' CPUs initially present & active on
