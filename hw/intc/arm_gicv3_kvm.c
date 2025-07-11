@@ -462,8 +462,8 @@ static void kvm_arm_gicv3_put(GICv3State *s)
         /*
          * We must ensure that we do not attempt to access or update KVM GICC
          * registers if their corresponding QOM `GICv3CPUState` is marked as
-         * 'inaccessible', either because their corresponding QOM vCPU objects
-         * do not exist or are disabled due to hot-unplug action.
+         * 'inaccessible', because their corresponding QOM vCPU objects
+         * are in standby state.
          */
         if (!gicv3_cpu_accessible(c)) {
             continue;

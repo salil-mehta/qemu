@@ -668,15 +668,14 @@ static uint32_t virt_acpi_get_gicc_flags(CPUState *cpu)
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
     /* can only exist in 'enabled' state */
-    if (!mc->has_hotpluggable_cpus) {
+    if (!mc->has_standby_cpus) {
         return 1;
     }
 
     /*
      * ARM GIC CPU Interface can be 'online-capable' or 'enabled' at boot
-     * We MUST set 'online-capable' bit for all hotpluggable CPUs except the
-     * first/boot CPU. Cold-booted CPUs without 'Id' can also be unplugged.
-     * Though as-of-now this is only used as a debugging feature.
+     * We MUST set 'online-capable' bit for all 'standby' capable CPUs except
+     * the first/boot CPU.
      *
      *   UEFI ACPI Specification 6.5
      *   Section: 5.2.12.14. GIC CPU Interface (GICC) Structure

@@ -735,8 +735,6 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
     StandbyHandler *handler;
     Error *local_err = NULL;
 
-    assert(dev->realized);
-
     if (!dc->can_standby) {
         error_setg(errp, "Device '%s' does not support standby/resume",
                    object_get_typename(obj));
@@ -747,6 +745,10 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
     assert(handler);
 
     if (value && !dev->standby) {
+        if (!dev->realized) {
+            dev->standby = true;
+            return;
+        }
         sdc = STANDBY_HANDLER_GET_CLASS(handler);
         /* check if device need to do this asynchronously */
         if (sdc->request_standby) {
@@ -761,6 +763,10 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
             }
         }
     } else if (!value && dev->standby) {
+        if (!dev->realized) {
+            dev->standby = false;
+            return;
+        }
         standby_handler_exit(handler, dev, &local_err);
         if (local_err != NULL) {
             goto fail;

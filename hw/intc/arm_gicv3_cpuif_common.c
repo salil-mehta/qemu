@@ -28,8 +28,8 @@ void gicv3_init_cpuif(GICv3State *s)
 
     /* define and register `system registers` with the vCPU  */
     for (i = 0; i < s->num_cpu; i++) {
-        if (gicv3_cpu_accessible(&s->cpu[i])) {
+       // if (gicv3_cpu_accessible(&s->cpu[i])) {
             agcc->init_cpu_reginfo(s->cpu[i].cpu);
-        }
+       // }
     }
 }

@@ -119,16 +119,6 @@ CPUState *qemu_get_possible_cpu(int index)
     return CPU(possible_cpus->cpus[index].cpu);
 }
 
-CPUState *qemu_get_standby_cpu(int index)
-{
-    MachineState *ms = MACHINE(qdev_get_machine());
-    const CPUArchIdList *standby_cpus = ms->standby_cpus;
-
-    assert((index >= 0) && (index < standby_cpus->len));
-
-    return CPU(standby_cpus->cpus[index].cpu);
-}
-
 CPUState *qemu_get_cpu(int index)
 {
     CPUState *cpu;

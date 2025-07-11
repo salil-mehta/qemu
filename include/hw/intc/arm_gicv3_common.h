@@ -405,7 +405,7 @@ static inline void gicv3_set_cpustate(GICv3CPUState *s,
                                       CPUState *cpu,
                                       bool gicc_accessible)
 {
-    s->cpu = cpu;
+    s->cpu = cpu; /* salil: revisit this */
     s->gicc_accessible = gicc_accessible;
 }
 #endif

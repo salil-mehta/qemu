@@ -167,8 +167,13 @@ void machine_parse_smp_config(MachineState *ms,
         sockets = sockets > 0 ? sockets : 1;
         cores = cores > 0 ? cores : 1;
         threads = threads > 0 ? threads : 1;
+
+        maxcpus = drawers * books * sockets * dies * clusters * modules *
+                  cores * threads;
+        cpus = maxcpus - scpus;
     } else {
         maxcpus = maxcpus > 0 ? maxcpus : cpus + scpus;
+        cpus = cpus > 0 ? cpus : maxcpus - scpus;
 
         if (mc->smp_props.prefer_sockets) {
             /* prefer sockets over cores before 6.2 */
@@ -207,11 +212,6 @@ void machine_parse_smp_config(MachineState *ms,
                        clusters * modules * cores);
         }
     }
-
-    total_cpus = drawers * books * sockets * dies *
-                 clusters * modules * cores * threads;
-    maxcpus = maxcpus > 0 ? maxcpus : total_cpus;
-    cpus = cpus > 0 ? cpus : maxcpus;
 
     ms->smp.cpus = cpus;
     ms->smp.scpus = scpus;

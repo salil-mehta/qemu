@@ -2014,7 +2014,7 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
     core_vcpu_num = core_id * ms->smp.threads;
     cpu_id = (sock_vcpu_num + clus_vcpu_num + core_vcpu_num) + thread_id;
 
-    cpu = qemu_get_standby_cpu(cpu_id);
+    cpu = qemu_get_possible_cpu(cpu_id);
     if (!cpu) {
         return NULL;
     }
@@ -2606,7 +2606,7 @@ static void machvirt_init(MachineState *machine)
     bool firmware_loaded;
     bool aarch64 = true;
     bool has_ged = !vmc->no_ged;
-    unsigned int smp_cpus = machine->smp.cpus + machine->smp.scpus;
+    unsigned int smp_cpus = machine->smp.cpus;
     unsigned int max_cpus = machine->smp.max_cpus;
 
     /*
@@ -2653,12 +2653,18 @@ static void machvirt_init(MachineState *machine)
         }
     }
 
+    /* salil: revisit again */
+    if (mc->has_standby_cpus) {
+        max_cpus = smp_cpus + machine->smp.scpus;
+        machine->smp.max_cpus = max_cpus;
+    }
     if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
         qtest_enabled() || (vms->gic_version < VIRT_GIC_VERSION_3)) {
         max_cpus = machine->smp.max_cpus = smp_cpus;
-        mc->has_hotpluggable_cpus = false;
+        mc->has_hotpluggable_cpus = false; /* salil: remove */
+        mc->has_standby_cpus = false;
         if (vms->gic_version >= VIRT_GIC_VERSION_3) {
-            warn_report("cpu hotplug feature has been disabled");
+            warn_report("cpu standby feature has been disabled");
         }
     }
 
@@ -2782,23 +2788,27 @@ static void machvirt_init(MachineState *machine)
         virt_cpu_set_properties(cpuobj, &error_abort);
 
         if (n < smp_cpus) {
-            /* pre-plugged vCPU */
+            /* present & active vCPUs */
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
             object_unref(cpuobj);
         } else {
-            /* cold- or hot-plugged vCPU */
+            /* present and standby vCPUs */
 
             /*
              * [!] Constraint: The ARM CPU architecture does not permit new CPUs
              * to be added after system initialization.
              *
              * Workaround: Pre-create KVM vCPUs even for those that are not yet
-             * plugged, keeping them `parked` and in an `unrealized` state
-             * within QEMU until they are cold- or hot-plugged.
+             * active i.e. on standby, keeping them `parked` and in an
+             * `unrealized (at-least during boot time)` state within QEMU until
+             * they are made active.
              */
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
             }
+
+            /* mark this vCPU to be in the 'standby' state */
+            qdev_standby(DEVICE(cpuobj), NULL, &error_fatal);
         }
 
         cpu_slot = virt_get_possible_cpu_arch_id(n);

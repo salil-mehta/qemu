@@ -132,10 +132,10 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
     CPUState *cs = gcs->cpu;
 
     /*
-     * If the destination QEMU has more *enabled* vCPUs than the source, we can
-     * either *fail* the migration or override the destination QEMU’s vCPU
+     * If the destination QEMU has more *active* vCPUs than the source, we can
+     * either *fail* the migration or override the destination QEMUs vCPU
      * configuration to match the source. Since it is safe to override the
-     * `CPUState` of the extra *enabled* vCPUs at the destination, we have
+     * `CPUState` of the extra *active* vCPUs at the destination, we have
      * adopted the latter approach as a mitigation for the mismatch.
      * RFC: Question: any suggestions on this are welcome?
      */
@@ -519,14 +519,16 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
     s->cpu = g_new0(GICv3CPUState, s->num_cpu);
 
     for (i = 0; i < s->num_cpu; i++) {
-        CPUState *cpu = qemu_get_standby_cpu(i);
+        CPUState *cpu = qemu_get_possible_cpu(i);
         uint64_t cpu_affid;
+        bool standby_cpu;
 
         /*
          * Accordingly, set the QOM `GICv3CPUState` as either accessible or
          * inaccessible based on the `CPUState` of the associated QOM vCPU.
          */
-        gicv3_set_cpustate(&s->cpu[i], cpu, DEVICE(cpu)->realized);
+        standby_cpu = object_property_get_bool(OBJECT(cpu), "standby", errp);
+        gicv3_set_cpustate(&s->cpu[i], cpu, !standby_cpu);
 
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */
