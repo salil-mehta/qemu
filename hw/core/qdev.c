@@ -242,16 +242,15 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 }
 
 DeviceState *
-qdev_find_standby_device(const QDict *opts, bool from_json, Error **errp)
+qdev_find_device(const QDict *opts, bool from_json, Error **errp)
 {
     ERRP_GUARD();
     DeviceListener *listener;
     DeviceState *dev;
 
     QTAILQ_FOREACH(listener, &device_listeners, link) {
-        if (listener->find_standby_device) {
-            dev = listener->find_standby_device(listener, opts, from_json,
-                                                errp);
+        if (listener->find_device) {
+            dev = listener->find_device(listener, opts, from_json, errp);
             if (*errp) {
                 return NULL;
             } else if (dev) {
@@ -348,8 +347,6 @@ void qdev_assert_realized_properly(void)
 
 bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 {
-    assert(dev->realized);
-
     if (bus) {
         error_setg(errp, "Device %s does not supports standby/resume",
                    object_get_typename(OBJECT(dev)));
@@ -366,8 +363,6 @@ void qdev_standby_now(DeviceState *dev, Error **errp)
 {
     StandbyHandler *handler;
     Error *local_err = NULL;
-
-    assert(dev->realized);
 
     /*
      * we are here because OSPM has already issued ACPI _EJx to the platform
@@ -391,8 +386,17 @@ void qdev_standby_now(DeviceState *dev, Error **errp)
     }
 }
 
-bool qdev_resume(DeviceState *dev, Error **errp)
+bool qdev_resume(DeviceState *dev, BusState *bus, Error **errp)
 {
+    if (bus) {
+        error_setg(errp, "Device %s does not supports standby/resume",
+                   object_get_typename(OBJECT(dev)));
+        return false;
+    } else {
+        /* for devices like cpu */
+        assert(!DEVICE_GET_CLASS(dev)->bus_type);
+    }
+
     return object_property_set_bool(OBJECT(dev), "standby", false, errp);
 }
 

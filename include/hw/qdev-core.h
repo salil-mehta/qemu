@@ -320,16 +320,14 @@ struct DeviceListener {
     bool (*hide_device)(DeviceListener *listener, const QDict *device_opts,
                         bool from_json, Error **errp);
     /*
-     * Used by qdev to find any stand-by device corresponding to the
-     * device opts
+     * Used by qdev to find any device corresponding to the device opts
      *
-     * Returns the stand-by `DeviceState` on sucess and NULL if
-     * stand-by device was not found. On errors, it returns NULL
-     * and errp is set
+     * Returns the `DeviceState` on sucess and NULL if device was not found.
+     * On errors, it returns NULL and errp is set
      */
-    DeviceState * (*find_standby_device)(DeviceListener *listener,
-                                         const QDict *device_opts,
-                                         bool from_json, Error **errp);
+    DeviceState * (*find_device)(DeviceListener *listener,
+                                 const QDict *device_opts,
+                                 bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -544,7 +542,7 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
  * Return: true on success, else false setting @errp with error
  */
 bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp);
-bool qdev_resume(DeviceState *dev, Error **errp);
+bool qdev_resume(DeviceState *dev, BusState *bus, Error **errp);
 void qdev_standby_now(DeviceState *dev, Error **errp);
 
 /**

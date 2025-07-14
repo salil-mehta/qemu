@@ -708,32 +708,46 @@ SRST
 ERST
 
     {
+        .name       = "device_state",
+        .args_type  = "id:s?,device:O?,state:s",
+        .params     = "[device] [driver[,prop=value][,...]] [active|standby]",
+        .help       = "set device state, Default is active",
+        .cmd        = hmp_device_state,
+        .command_completion = device_state_completion,
+    },
+
+SRST
+``device_state`` *id* *config* *state*
+  set device state to standby or active mode.
+ERST
+
+    {
         .name       = "device_resume",
-        .args_type  = "device:O",
-        .params     = "driver[,prop=value][,...]",
-        .help       = "resume device from standby mode, like -device on the command line",
+        .args_type  = "id:s?,device:O?",
+        .params     = "[device] [driver[,prop=value][,...]]",
+        .help       = "resume device from standby mode",
         .cmd        = hmp_device_resume,
         .command_completion = device_resume_completion,
     },
 
 SRST
-``device_resume`` *config*
+``device_resume`` *id* *config*
   Resume device.
 ERST
 
     {
         .name       = "device_standby",
-        .args_type  = "id:s",
-        .params     = "device",
+        .args_type  = "id:s?,device:O?",
+        .params     = "[device] [driver[,prop=value][,...]]",
         .help       = "put device on standby mode",
         .cmd        = hmp_device_standby,
         .command_completion = device_standby_completion,
     },
 
 SRST
-``device_standby`` *id*
-  Remove device *id*. *id* may be a short ID
-  or a QOM object path.
+``device_standby`` *id* *config*
+  Put device [*id*] [*config*] on standby mode. Either *id* or *config*
+  might be specified *id* can be a  QOM object path.as well.
 ERST
 
     {

@@ -1835,61 +1835,42 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
+
 static DeviceState *
-virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
-                      bool from_json, Error **errp)
+virt_find_cpu(const QDict *opts, bool from_json, Error **errp)
 {
-    VirtMachineState *vms = container_of(listener, VirtMachineState,
-                                         cpu_listener);
-    int cpu_id, sock_vcpu_num, clus_vcpu_num, core_vcpu_num;
     int64_t socket_id=0, cluster_id=0, core_id=0, thread_id=0;
-    MachineState *ms = MACHINE(vms);
-    ObjectClass *oc;
+    int cpu_id, sock_vcpu_num, clus_vcpu_num, core_vcpu_num;
+    MachineState *ms = MACHINE(qdev_get_machine());
     CPUState *cpu;
 
-    assert(device_opts);
-
-    /* make sure we are dealing with supported ARM cpu type */
-    oc = cpu_class_by_name(TYPE_ARM_CPU,
-                           cpu_model_from_type(qdict_get_try_str(device_opts,
-                           "driver")));
-    if (!oc) {
-        error_setg(errp, "unsupported ARM CPU Type (%s) specified",
-                   cpu_model_from_type(qdict_get_try_str(device_opts, "driver"))
-                   );
-        return NULL;
-    }
+    assert(opts);
 
     /* fetch the topology of the cpu being plugged */
     if (from_json) {
-        socket_id = qdict_get_try_int(device_opts, "socket-id", 0);
-        cluster_id = qdict_get_try_int(device_opts, "cluster-id", 0);
-        core_id = qdict_get_try_int(device_opts, "core-id", 0);
-        thread_id = qdict_get_try_int(device_opts, "thread-id", 0);
+        socket_id = qdict_get_try_int(opts, "socket-id", 0);
+        cluster_id = qdict_get_try_int(opts, "cluster-id", 0);
+        core_id = qdict_get_try_int(opts, "core-id", 0);
+        thread_id = qdict_get_try_int(opts, "thread-id", 0);
     } else {
-        if ((qdict_get_try_str(device_opts,"socket-id"))) {
-            socket_id = strtol(qdict_get_try_str(device_opts, "socket-id"),
+        if ((qdict_get_try_str(opts,"socket-id"))) {
+            socket_id = strtol(qdict_get_try_str(opts, "socket-id"),
                                NULL, 10);
         }
-        if ((qdict_get_try_str(device_opts,"cluster-id"))) {
-            cluster_id = strtol(qdict_get_try_str(device_opts, "cluster-id"),
+        if ((qdict_get_try_str(opts,"cluster-id"))) {
+            cluster_id = strtol(qdict_get_try_str(opts, "cluster-id"),
                                 NULL, 10);
         }
-        if ((qdict_get_try_str(device_opts,"core-id"))) {
-            core_id = strtol(qdict_get_try_str(device_opts, "core-id"),
+        if ((qdict_get_try_str(opts,"core-id"))) {
+            core_id = strtol(qdict_get_try_str(opts, "core-id"),
                              NULL, 10);
         }
-        if ((qdict_get_try_str(device_opts,"thread-id"))) {
-            thread_id = strtol(qdict_get_try_str(device_opts, "thread-id"),
+        if ((qdict_get_try_str(opts,"thread-id"))) {
+            thread_id = strtol(qdict_get_try_str(opts, "thread-id"),
                                NULL, 10);
         }
     }
 
-    /*
-     * The failure of the sanity check just means inability to locate a
-     * standby CPU. Proper error handling will happen during pre-plug phase
-     * resulting in an appropriate error being returned.
-     */
     if ((thread_id < 0) || (thread_id >= ms->smp.threads)) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid thread-id %ld",
@@ -1929,14 +1910,37 @@ virt_find_standby_cpu(DeviceListener *listener, const QDict *device_opts,
     if (!cpu) {
         return NULL;
     }
-    if (DEVICE(cpu)->realized) {
-        error_setg(errp, "cpu(id%d=%ld:%ld:%ld:%ld) with arch-id %" PRIu64 " exist",
-                   cpu->cpu_index, socket_id, cluster_id, core_id, thread_id,
-                   ARM_CPU(cpu)->mp_affinity);
+
+    return DEVICE(cpu);
+}
+
+static DeviceState *
+virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
+                  Error **errp)
+{
+    DeviceState *dev;
+    char *typename;
+
+    assert(opts);
+
+    typename = qdict_get_try_str(opts, "driver");
+    if (!typename)
+    {
+        error_setg(errp, "no driver specified");
         return NULL;
     }
 
-    return DEVICE(cpu);
+    if (!strcmp(typename, TYPE_ARM_CPU)) {
+        dev = virt_find_cpu(opts, from_json, errp);
+        if (!dev)
+        {
+            error_setg(errp, "failed to find matching cpu device");
+            return NULL;
+        }
+        return dev;
+    }
+
+    return NULL;
 }
 
 static void
@@ -2010,7 +2014,7 @@ fail:
 }
 
 static void
-virt_cpu_standby_enter(StandbyHandler *handler, DeviceState *dev, Error **errp)
+virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
     StandbyHandlerClass *ssc;
@@ -2679,8 +2683,8 @@ static void machvirt_init(MachineState *machine)
     create_fdt(vms);
 
     notifier_list_init(&vms->cpuhp_notifiers);
-    vms->cpu_listener.find_standby_device = virt_find_standby_cpu;
-    device_listener_register(&vms->cpu_listener);
+    vms->device_listener.find_device = virt_find_device;
+    device_listener_register(&vms->device_listener);
 
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {
@@ -3639,11 +3643,11 @@ virt_machine_device_request_standby(StandbyHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_machine_device_standby_enter(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_enter_standby(StandbyHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_standby_enter(handler, dev, errp);
+        virt_cpu_enter_standby(handler, dev, errp);
     } else {
         error_setg(errp, "virt: device standby for unsupported device"
                    "type: %s", object_get_typename(OBJECT(dev)));
@@ -3816,7 +3820,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     assert(!mc->get_standby_handler);
     mc->get_standby_handler = virt_machine_get_standby_handler;
     sc->request_standby = virt_machine_device_request_standby;
-    sc->enter_standby = virt_machine_device_standby_enter;
+    sc->enter_standby = virt_machine_device_enter_standby;
     sc->exit_standby = virt_machine_device_resume;
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;

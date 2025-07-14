@@ -6,16 +6,12 @@
 void hmp_info_qtree(Monitor *mon, const QDict *qdict);
 void hmp_info_qdm(Monitor *mon, const QDict *qdict);
 void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp);
-void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp);
-void qmp_device_standby(const char *id, Error **errp);
+void qmp_device_state(QDict *opts, Error **errp);
 
 int qdev_device_help(QemuOpts *opts);
 DeviceState *qdev_device_add(QemuOpts *opts, Error **errp);
 DeviceState *qdev_device_add_from_qdict(const QDict *opts,
                                         bool from_json, Error **errp);
-DeviceState *qdev_device_resume(QDict *opts, Error **errp);
-//DeviceState *qdev_device_standby(QDict *opts, Error **errp);
-
 
 /**
  * qdev_set_id: parent the device and set its id if provided.
