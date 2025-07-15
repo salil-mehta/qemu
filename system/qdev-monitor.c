@@ -592,7 +592,7 @@ static BusState *qbus_find(const char *path, Error **errp)
 
 bool qdev_check_active(DeviceState *dev, Error **errp)
 {
-    DeviceClass *dc;
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
 
     if (dc->can_standby &&
         object_property_get_bool(OBJECT(dev), "standby", errp)) {
@@ -767,8 +767,8 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     qobject_unref(qdict);
     return ret;
 }
-
-static void qdev_device_resume(QDict *qdict, Error **errp)
+#if 0
+static void qdev_device_resume(const QDict *qdict, Error **errp)
 {
     ERRP_GUARD();
     const char *driver;
@@ -779,21 +779,21 @@ static void qdev_device_resume(QDict *qdict, Error **errp)
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
         error_setg(errp, "Parameter 'driver' is missing");
-        return NULL;
+        return;
     }
 
     /* check driver exists */
     dc = qdev_get_device_class(&driver, errp);
     if (!dc) {
         error_setg(errp, "driver '%s' not supported", driver);
-        return NULL;
+        return;
     }
 
     /* TBD: we might have to consider bus related handling for other devices */
 
     if (!migration_is_idle()) {
         error_setg(errp, "device_resume not allowed while migrating");
-        return NULL;
+        return;
     }
 
     id = qdict_get_str(qdict, "id");
@@ -820,12 +820,12 @@ static void qdev_device_resume(QDict *qdict, Error **errp)
     }
 
     if (!qdev_resume(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp)) {
-        return NULL;
+        return;
     }
 
     return dev;
 }
-
+#endif
 #define qdev_printf(fmt, ...) monitor_printf(mon, "%*s" fmt, indent, "", ## __VA_ARGS__)
 
 static void qdev_print_props(Monitor *mon, DeviceState *dev, Property *props,
@@ -962,7 +962,8 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
     object_unref(OBJECT(dev));
 }
 
-void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
+#if 0
+static void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
 {
     if (!monitor_cur_is_qmp()) {
         return;
@@ -974,7 +975,7 @@ void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
         return;
     }
 }
-
+#endif
 static DeviceState *find_device_state(const char *id, Error **errp)
 {
     Object *obj = object_resolve_path_at(qdev_get_peripheral(), id);
@@ -1044,8 +1045,7 @@ void qdev_unplug(DeviceState *dev, Error **errp)
     error_propagate(errp, local_err);
 }
 
-
-void qmp_device_state(QDict *qdict, Error **errp)
+void qmp_device_state(const QDict *qdict, Error **errp)
 {
     const char *state;
     const char *driver;
@@ -1117,19 +1117,7 @@ void qmp_device_state(QDict *qdict, Error **errp)
     }
 }
 
-void qdev_device_state(QemuOpts *opts, Error **errp)
-{
-    QDict *qdict = qemu_opts_to_qdict(opts, NULL);
-
-    qmp_device_state(qdict, errp);
-    if (!*errp) {
-        qemu_opts_del(opts);
-    }
-    qobject_unref(qdict);
-    return;
-}
-
-void qmp_device_standby(QDict *qdict, Error **errp)
+static void qmp_device_standby(const QDict *qdict, Error **errp)
 {
     const char *driver;
     DeviceState *dev;
@@ -1143,14 +1131,14 @@ void qmp_device_standby(QDict *qdict, Error **errp)
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
         error_setg(errp, "Parameter 'driver' is missing");
-        return NULL;
+        return;
     }
 
     /* check driver exists and we are at the right phase of machine init */
     dc = qdev_get_device_class(&driver, errp);
     if (!dc) {
         error_setg(errp, "driver '%s' not supported", driver);
-        return NULL;
+        return;
     }
 
     if (!migration_is_idle()) {
@@ -1232,10 +1220,12 @@ void hmp_device_state(Monitor *mon, const QDict *qdict)
 
 void hmp_device_resume(Monitor *mon, const QDict *qdict)
 {
+#if 0
     Error *err = NULL;
 
     qmp_device_resume(qdict, NULL, &err);
     hmp_handle_error(mon, err);
+#endif
 }
 
 void hmp_device_standby(Monitor *mon, const QDict *qdict)

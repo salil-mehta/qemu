@@ -1919,7 +1919,7 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
                   Error **errp)
 {
     DeviceState *dev;
-    char *typename;
+    const char *typename;
 
     assert(opts);
 
@@ -2569,7 +2569,7 @@ static void machvirt_init(MachineState *machine)
 
     /* salil: revisit again */
     if (mc->has_standby_cpus) {
-        max_cpus = smp_cpus + machine->smp.scpus;
+        max_cpus = smp_cpus + machine->smp.standbycpus;
         machine->smp.max_cpus = max_cpus;
     }
     if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||

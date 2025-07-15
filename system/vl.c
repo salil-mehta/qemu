@@ -728,6 +728,9 @@ static QemuOptsList qemu_smp_opts = {
             .name = "cpus",
             .type = QEMU_OPT_NUMBER,
         }, {
+            .name = "standbycpus",
+            .type = QEMU_OPT_NUMBER,
+        }, {
             .name = "drawers",
             .type = QEMU_OPT_NUMBER,
         }, {
@@ -1221,10 +1224,10 @@ static int device_init_func(void *opaque, QemuOpts *opts, Error **errp)
     }
     return 0;
 }
-
+#if 0
 static int device_state_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
-    QDict *qdict = qemu_opts_to_qdict(opts, NULL);
+    const QDict *qdict = qemu_opts_to_qdict(opts, NULL);
 
     qmp_device_state(qdict, errp);
     if (*errp) {
@@ -1235,7 +1238,7 @@ static int device_state_init_func(void *opaque, QemuOpts *opts, Error **errp)
     qobject_unref(qdict);
     return 0;
 }
-
+#endif
 static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     Error *local_err = NULL;
@@ -2680,9 +2683,11 @@ static void qemu_create_cli_devices(void)
         object_unref(OBJECT(dev));
         loc_pop(&opt->loc);
     }
+#if 0
     /* preconfigure the states of the devices */
     qemu_opts_foreach(qemu_find_opts("devicestate"),
                       device_state_init_func, NULL, &error_fatal);
+#endif
     rom_reset_order_override();
 }
 

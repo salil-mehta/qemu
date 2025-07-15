@@ -18,6 +18,7 @@
 #include "sysemu/tcg.h"
 #include "target/arm/multiprocessing.h"
 #include "hw/boards.h"
+#include "qapi/error.h"
 
 #ifndef DEBUG_ARM_POWERCTL
 #define DEBUG_ARM_POWERCTL 0

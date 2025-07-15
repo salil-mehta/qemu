@@ -280,7 +280,7 @@ SRST
 ERST
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
-    "-smp [[cpus=]n][,standbycpus=scpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
+    "-smp [[cpus=]n][,standbycpus=standbycpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
     "               [,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules]\n"
     "               [,cores=cores][,threads=threads]\n"
     "                set the number of initial CPUs to 'n' [default=1]\n"
@@ -315,10 +315,10 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      and *present* in advance at the boot time. Meant for ARM Architecture\n"
     "      like machines which do not support hotplug of CPUs\n", QEMU_ARCH_ALL)
 SRST
-``-smp [[cpus=]n][,standbycpus=scpus][,maxcpus=maxcpus][,activecpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
+``-smp [[cpus=]n][,standbycpus=standbycpus][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
     Simulate a SMP system with '\ ``n``\ ' CPUs initially present & active on
     the machine type board. Futhermore, on architectures that support Standby
-    CPUs, optional '\ ``scpus``\ 'parameter can be used to specify
+    CPUs, optional '\ ``standbycpus``\ 'parameter can be used to specify
     *additional* present CPUs but which are on standby mode i.e. not active.
     This is different than CPU hotplug where additional CPUs are not present.
     On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
