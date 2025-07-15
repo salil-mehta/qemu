@@ -1109,18 +1109,18 @@ void device_listener_unregister(DeviceListener *listener);
 bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
 
 /**
- * qdev_find_standby_device() - find the stand-by device
+ * qdev_find_device() - find the device
  *
  * @opts: options QDict
  * @from_json: true if @opts entries are typed, false for all strings
  * @errp: pointer to error object
  *
- * When a device is added via qdev_device_add() this will be called.
+ * Called when device state is toggled via qdev_device_state()
  *
- * Return: a stand-by DeviceState on success and NULL on failure
+ * Return: a DeviceState on success and NULL on failure
  */
 DeviceState *
-qdev_find_standby_device(const QDict *opts, bool from_json, Error **errp);
+qdev_find_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

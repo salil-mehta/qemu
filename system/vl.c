@@ -1224,12 +1224,15 @@ static int device_init_func(void *opaque, QemuOpts *opts, Error **errp)
 
 static int device_state_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
-    qmp_device_state(opts, errp);
+    QDict *qdict = qemu_opts_to_qdict(opts, NULL);
+
+    qmp_device_state(qdict, errp);
     if (*errp) {
         error_report_err(*errp);
+        qobject_unref(qdict);
         return -1;
     }
-
+    qobject_unref(qdict);
     return 0;
 }
 
