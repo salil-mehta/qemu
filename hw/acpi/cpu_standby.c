@@ -49,25 +49,20 @@ acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
 
 static bool acpi_check_cpu_enabled_status(DeviceState *dev)
 {
-#if 0
-    CPUClass *k = dev ? CPU_GET_CLASS(dev) : NULL;
-    CPUState *cpu = CPU(dev);
-
-    /* TODO: fetch state via property of device */
-
-    if (cpu && (!k->cpu_enabled_status || k->cpu_enabled_status(cpu))) {
+    /* active qemu vCPU should return ACPI _STA.Ena=true */
+    if (qdev_check_active(dev, &error_warn)) {
         return true;
     }
-#endif
+
     return false;
 }
 
 static uint64_t
 acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
-    uint64_t val = 0;
     CPUStandbyState *cpu_st = opaque;
     AcpiCpuStandbyStatus *cdev;
+    uint64_t val = 0;
 
     if (cpu_st->selector >= cpu_st->dev_count) {
         return val;

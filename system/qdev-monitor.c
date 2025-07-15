@@ -590,6 +590,17 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
+bool qdev_check_active(DeviceState *dev, Error **errp)
+{
+    DeviceClass *dc;
+
+    if (dc->can_standby &&
+        object_property_get_bool(OBJECT(dev), "standby", errp)) {
+        return false;
+    }
+    return true;
+}
+
 /* Takes ownership of @id, will be freed when deleting the device */
 const char *qdev_set_id(DeviceState *dev, char *id, Error **errp)
 {
