@@ -1054,9 +1054,11 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     const char *id;
     warn_report("[%s] Enter..\n", __func__);
 
+#if 0
     if (!monitor_cur_is_qmp()) {
         return;
     }
+#endif
 
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
