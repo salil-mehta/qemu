@@ -1095,7 +1095,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
 
     state = qdict_get_try_str(qdict, "state");
     if (!state || !strcmp(state, "active")) {
-        if (!object_property_get_bool(OBJECT(dev), "standby", errp)) {
+        if (qdev_check_active(dev, errp)) {
             error_setg(errp, "device %s is already active", id);
             return;
         }
@@ -1104,7 +1104,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
             return;
         }
     } else if (!strcmp(state, "standby")) {
-        if (object_property_get_bool(OBJECT(dev), "standby", errp)) {
+        if (!qdev_check_active(dev, errp)) {
             error_setg(errp, "device %s is already in standby mode", id);
             return;
         }
