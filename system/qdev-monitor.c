@@ -1073,6 +1073,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
         error_setg(errp, "driver '%s' not supported", driver);
         return;
     }
+    warn_report("[%s] after driver %s\n", __func__,driver);
 
     if (!migration_is_idle()) {
         error_setg(errp, "device_standby not allowed while migrating");

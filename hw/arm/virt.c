@@ -1871,6 +1871,9 @@ virt_find_cpu(const QDict *opts, bool from_json, Error **errp)
         }
     }
 
+    warn_report("[%s] cpu(%ld:%ld:%ld:%ld)\n", __func__,
+                   socket_id, cluster_id, core_id, thread_id);
+
     if ((thread_id < 0) || (thread_id >= ms->smp.threads)) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid thread-id %ld",
@@ -1989,6 +1992,8 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
+    warn_report("[%s] cpu%d\n", __func__, cs->cpu_index);
+
     if (!dc->can_standby) {
         error_setg(errp, "CPU standby/resume not supported on this machine");
         return;
@@ -2008,6 +2013,8 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
         goto fail;
     }
 
+    warn_report("[%s] cpu%d Exit\n", __func__, cs->cpu_index);
+
     return;
 fail:
     error_propagate(errp, local_err);
@@ -2021,6 +2028,8 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
     CPUState *cs = CPU(dev);
     Error *local_err = NULL;
 
+    warn_report("[%s] cpu%d Enter\n", __func__, cs->cpu_index);
+
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
     ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
     if (local_err) {
@@ -2032,6 +2041,8 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
     if (vms->fw_cfg) {
         fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
     }
+
+    warn_report("[%s] cpu%d Exit\n", __func__, cs->cpu_index);
 
     return;
 fail:

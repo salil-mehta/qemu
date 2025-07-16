@@ -739,6 +739,8 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
     StandbyHandler *handler;
     Error *local_err = NULL;
 
+    warn_report("[%s] device-ID%s\n", __func__, dev->id);
+
     if (!dc->can_standby) {
         error_setg(errp, "Device '%s' does not support standby/resume",
                    object_get_typename(obj));
