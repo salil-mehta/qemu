@@ -1101,7 +1101,11 @@ void qmp_device_state(const QDict *qdict, Error **errp)
 
     state = qdict_get_try_str(qdict, "state");
     warn_report("[%s] state %s\n", __func__, state);
-    if (!state || !strcmp(state, "active")) {
+    if (!state) {
+        error_setg(errp, "no device state change specified for device %s ",
+                   dev->id);
+        return;
+    } else if (strcmp(state, "active")) {
         if (qdev_check_active(dev, errp)) {
             error_setg(errp, "device %s is already active", id);
             return;
@@ -1110,7 +1114,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
         if (!qdev_resume(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp)) {
             return;
         }
-    } else if (!strcmp(state, "standby")) {
+    } else if (strcmp(state, "standby")) {
         if (!qdev_check_active(dev, errp)) {
             error_setg(errp, "device %s is already in standby mode", id);
             return;
@@ -1120,7 +1124,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
             return;
         }
     } else {
-        error_setg(errp, "unrecognized specified state *%s* for device %s ",
+        error_setg(errp, "unrecognized specified state *%s* for device %s",
                    state, dev->id);
         return;
     }
