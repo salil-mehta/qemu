@@ -1052,6 +1052,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     DeviceState *dev;
     DeviceClass *dc;
     const char *id;
+    warn_report("[%s] Enter..\n", __func__);
 
     if (!monitor_cur_is_qmp()) {
         return;
@@ -1062,6 +1063,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
         error_setg(errp, "Parameter 'driver' is missing");
         return;
     }
+    warn_report("[%s] driver %s\n", __func__,driver);
 
     /* check driver exists and we are at the right phase of machine init */
     dc = qdev_get_device_class(&driver, errp);
@@ -1076,6 +1078,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     }
 
     id = qdict_get_str(qdict, "id");
+        warn_report("[%s] Id %s\n", __func__, id);
     if (id) {
         /* find device from the 'id' */
         dev = find_device_state(id, errp);
@@ -1094,6 +1097,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     }
 
     state = qdict_get_try_str(qdict, "state");
+    warn_report("[%s] state %s\n", __func__, state);
     if (!state || !strcmp(state, "active")) {
         if (qdev_check_active(dev, errp)) {
             error_setg(errp, "device %s is already active", id);
