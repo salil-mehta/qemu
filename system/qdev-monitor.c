@@ -1080,7 +1080,7 @@ void qmp_device_state(const QDict *qdict, Error **errp)
         return;
     }
 
-    id = qdict_get_str(qdict, "id");
+    id = qdict_get_try_str(qdict, "id");
         warn_report("[%s] Id %s\n", __func__, id);
     if (id) {
         /* find device from the 'id' */
