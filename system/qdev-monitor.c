@@ -1120,7 +1120,9 @@ void qmp_device_state(const QDict *qdict, Error **errp)
             return;
         }
     } else {
-        g_assert_not_reached();
+        error_setg(errp, "unrecognized specified state *%s* for device %s ",
+                   state, dev->id);
+        return;
     }
 }
 

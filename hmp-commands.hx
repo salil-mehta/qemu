@@ -709,8 +709,8 @@ ERST
 
     {
         .name       = "device_state",
-        .args_type  = "device:O?,state:s",
-        .params     = "[driver[,prop=value][,...]] [active|standby]",
+        .args_type  = "device:O,state:s",
+        .params     = "driver[,prop=value][,...] active|standby",
         .help       = "set device state, Default is active",
         .cmd        = hmp_device_state,
         .command_completion = device_state_completion,
