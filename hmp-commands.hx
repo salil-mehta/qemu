@@ -709,15 +709,15 @@ ERST
 
     {
         .name       = "device_state",
-        .args_type  = "id:s?,device:O?,state:s",
-        .params     = "[device] [driver[,prop=value][,...]] [active|standby]",
+        .args_type  = "device:O?,state:s",
+        .params     = "[driver[,prop=value][,...]] [active|standby]",
         .help       = "set device state, Default is active",
         .cmd        = hmp_device_state,
         .command_completion = device_state_completion,
     },
 
 SRST
-``device_state`` *id* *config* *state*
+``device_state`` *config* *state*
   set device state to standby or active mode.
 ERST
 
