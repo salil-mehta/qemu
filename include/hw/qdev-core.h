@@ -236,6 +236,10 @@ struct DeviceState {
      */
     bool realized;
     /**
+     * @defer_realize: does this device supports deferred realization?
+     */
+    bool defer_realize;
+    /**
      * @standby: is device on standby?
      */
     bool standby;

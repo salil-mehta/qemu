@@ -126,7 +126,7 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
     target_cpu_state = arm_get_cpu_by_id(cpuid);
 
     if (!target_cpu_state ||
-        !qdev_check_active(DEVICE(target_cpu_state), &error_warn) ) {
+        !qdev_check_active(DEVICE(target_cpu_state), &error_warn)) {
         /*
          * The cpu is not plugged in or disabled. We should return appropriate
          * value as introduced in DEN0022E PSCI 1.2 issue E

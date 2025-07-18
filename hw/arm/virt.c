@@ -1921,8 +1921,8 @@ static DeviceState *
 virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
                   Error **errp)
 {
-    DeviceState *dev;
     const char *typename;
+    DeviceState *dev;
 
     assert(opts);
 
@@ -1933,7 +1933,7 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
         return NULL;
     }
 
-    if (!strcmp(typename, TYPE_ARM_CPU)) {
+    if (!strcmp(cputype_from_typename(typename), TYPE_ARM_CPU)) {
         dev = virt_find_cpu(opts, from_json, errp);
         if (!dev)
         {

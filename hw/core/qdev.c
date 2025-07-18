@@ -770,9 +770,22 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
         }
     } else if (!value && dev->standby) {
         if (!dev->realized) {
-            dev->standby = false;
-            return;
+            if (!phase_check(PHASE_MACHINE_READY)) {
+                /* case: when devices are resumed using -deviceset option */
+                qdev_realize(dev);
+                qatomic_store_release(&dev->standby, value);
+                smp_wmb();
+                return;
+            }
+            /*
+             * defer realize this device now, by doing this we saved some
+             * bootime. This is particularly useful for devices like cpus
+             */
+            if (dev->defer_realize) {
+                qdev_realize(dev);
+            }
         }
+
         standby_handler_exit(handler, dev, &local_err);
         if (local_err != NULL) {
             goto fail;
@@ -790,6 +803,7 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
         }
 
         qatomic_store_release(&dev->standby, value);
+        smp_wmb();
     }
 
     assert(local_err == NULL);
