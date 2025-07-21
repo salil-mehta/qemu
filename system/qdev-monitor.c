@@ -590,12 +590,12 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
-bool qdev_check_active(DeviceState *dev, Error **errp)
+bool qdev_check_active(DeviceState *dev)
 {
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
 
     if (dc->can_standby &&
-        object_property_get_bool(OBJECT(dev), "standby", errp)) {
+        object_property_get_bool(OBJECT(dev), "standby", NULL)) {
         return false;
     }
     return true;
@@ -767,65 +767,7 @@ DeviceState *qdev_device_add(QemuOpts *opts, Error **errp)
     qobject_unref(qdict);
     return ret;
 }
-#if 0
-static void qdev_device_resume(const QDict *qdict, Error **errp)
-{
-    ERRP_GUARD();
-    const char *driver;
-    DeviceState *dev;
-    DeviceClass *dc;
-    const char *id;
 
-    driver = qdict_get_try_str(qdict, "driver");
-    if (!driver) {
-        error_setg(errp, "Parameter 'driver' is missing");
-        return;
-    }
-
-    /* check driver exists */
-    dc = qdev_get_device_class(&driver, errp);
-    if (!dc) {
-        error_setg(errp, "driver '%s' not supported", driver);
-        return;
-    }
-
-    /* TBD: we might have to consider bus related handling for other devices */
-
-    if (!migration_is_idle()) {
-        error_setg(errp, "device_resume not allowed while migrating");
-        return;
-    }
-
-    id = qdict_get_str(qdict, "id");
-    if (id) {
-        /* find device from the 'id' */
-        dev = find_device_state(id, errp);
-        if (!dev) {
-            error_setg(errp, "Device '%s' not found!", id);
-            return;
-        }
-    } else {
-        /* find device from the user specified configuration */
-        dev = qdev_find_device(qdict, false, errp);
-        if (*errp) {
-            error_setg(errp, "could not find standby device for driver %s",
-                       driver);
-            return;
-        }
-    }
-
-    if (!object_property_get_bool(OBJECT(dev), "standby", errp)) {
-        error_setg(errp, "device %s is already active", id);
-        return;
-    }
-
-    if (!qdev_resume(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp)) {
-        return;
-    }
-
-    return dev;
-}
-#endif
 #define qdev_printf(fmt, ...) monitor_printf(mon, "%*s" fmt, indent, "", ## __VA_ARGS__)
 
 static void qdev_print_props(Monitor *mon, DeviceState *dev, Property *props,
@@ -962,20 +904,6 @@ void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp)
     object_unref(OBJECT(dev));
 }
 
-#if 0
-static void qmp_device_resume(QDict *qdict, QObject **ret_data, Error **errp)
-{
-    if (!monitor_cur_is_qmp()) {
-        return;
-    }
-
-    qdev_device_resume(qdict, errp);
-    if (*errp) {
-        error_setg(errp, "could not resume the device");
-        return;
-    }
-}
-#endif
 static DeviceState *find_device_state(const char *id, Error **errp)
 {
     Object *obj = object_resolve_path_at(qdev_get_peripheral(), id);
@@ -1045,7 +973,7 @@ void qdev_unplug(DeviceState *dev, Error **errp)
     error_propagate(errp, local_err);
 }
 
-void qmp_device_state(const QDict *qdict, Error **errp)
+void qmp_device_set(const QDict *qdict, Error **errp)
 {
     const char *state;
     const char *driver;
@@ -1053,12 +981,6 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     DeviceClass *dc;
     const char *id;
     warn_report("[%s] Enter..\n", __func__);
-
-#if 0
-    if (!monitor_cur_is_qmp()) {
-        return;
-    }
-#endif
 
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
@@ -1081,22 +1003,27 @@ void qmp_device_state(const QDict *qdict, Error **errp)
     }
 
     id = qdict_get_try_str(qdict, "id");
-        warn_report("[%s] Id %s\n", __func__, id);
+    warn_report("[%s] Id %s\n", __func__, id);
+
     if (id) {
-        /* find device from the 'id' */
+        /* Lookup by ID */
         dev = find_device_state(id, errp);
-        if (!dev) {
-            error_setg(errp, "Device '%s' not found!", id);
+        if (errp && *errp) {
+            error_prepend(errp, "Device lookup failed for ID '%s': ", id);
             return;
         }
     } else {
-        /* find device from the user specified configuration */
+        /* Lookup using driver and properties */
         dev = qdev_find_device(qdict, false, errp);
-        if (*errp) {
-            error_setg(errp, "could not find standby device for driver %s",
-                       driver);
+        if (errp && *errp) {
+            error_prepend(errp, "Device lookup via config failed for driver"
+                          "'%s': ", driver);
             return;
         }
+    }
+    if (!dev) {
+        error_setg(errp, "No device found for driver '%s'", driver);
+        return;
     }
 
     state = qdict_get_try_str(qdict, "state");
@@ -1106,21 +1033,21 @@ void qmp_device_state(const QDict *qdict, Error **errp)
                    dev->id);
         return;
     } else if (!strcmp(state, "active")) {
-        if (qdev_check_active(dev, errp)) {
+        if (qdev_check_active(dev)) {
             error_setg(errp, "device %s is already active", id);
             return;
         }
 
-        if (!qdev_resume(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp)) {
+        if (!qdev_resume(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
             return;
         }
     } else if (!strcmp(state, "standby")) {
-        if (!qdev_check_active(dev, errp)) {
+        if (!qdev_check_active(dev)) {
             error_setg(errp, "device %s is already in standby mode", id);
             return;
         }
 
-        if (!qdev_standby(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp)) {
+        if (!qdev_standby(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
             return;
         }
     } else {
@@ -1128,66 +1055,6 @@ void qmp_device_state(const QDict *qdict, Error **errp)
                    state, dev->id);
         return;
     }
-}
-
-static void qmp_device_standby(const QDict *qdict, Error **errp)
-{
-    const char *driver;
-    DeviceState *dev;
-    DeviceClass *dc;
-    const char *id;
-
-    if (!monitor_cur_is_qmp()) {
-        return;
-    }
-
-    driver = qdict_get_try_str(qdict, "driver");
-    if (!driver) {
-        error_setg(errp, "Parameter 'driver' is missing");
-        return;
-    }
-
-    /* check driver exists and we are at the right phase of machine init */
-    dc = qdev_get_device_class(&driver, errp);
-    if (!dc) {
-        error_setg(errp, "driver '%s' not supported", driver);
-        return;
-    }
-
-    if (!migration_is_idle()) {
-        error_setg(errp, "device_standby not allowed while migrating");
-        return;
-    }
-
-    id = qdict_get_str(qdict, "id");
-    if (id) {
-        /* find device from the 'id' */
-        dev = find_device_state(id, errp);
-        if (!dev) {
-            error_setg(errp, "Device '%s' not found!", id);
-            return;
-        }
-    } else {
-        /* find device from the user specified configuration */
-        dev = qdev_find_device(qdict, false, errp);
-        if (*errp) {
-            error_setg(errp, "could not find standby device for driver %s",
-                       driver);
-            return;
-        }
-    }
-
-    /* RFC: TBD: standby blockers - maybe for non-core devices? */
-
-    if (object_property_get_bool(OBJECT(dev), "standby", errp)) {
-        error_setg(errp, "device %s is already in standby mode", id);
-        return;
-    }
-
-    /* TBD: check pending event handling later */
-
-    /* put the device on standby */
-    qdev_standby(dev, BUS(qdev_get_parent_bus(DEVICE(dev))), errp);
 }
 
 void qmp_device_del(const char *id, Error **errp)
@@ -1223,29 +1090,11 @@ void hmp_device_del(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, err);
 }
 
-void hmp_device_state(Monitor *mon, const QDict *qdict)
+void hmp_device_set(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
 
-    qmp_device_state(qdict, &err);
-    hmp_handle_error(mon, err);
-}
-
-void hmp_device_resume(Monitor *mon, const QDict *qdict)
-{
-#if 0
-    Error *err = NULL;
-
-    qmp_device_resume(qdict, NULL, &err);
-    hmp_handle_error(mon, err);
-#endif
-}
-
-void hmp_device_standby(Monitor *mon, const QDict *qdict)
-{
-    Error *err = NULL;
-
-    qmp_device_standby(qdict, &err);
+    qmp_device_set(qdict, &err);
     hmp_handle_error(mon, err);
 }
 
@@ -1331,16 +1180,32 @@ void device_del_completion(ReadLineState *rs, int nb_args, const char *str)
     peripheral_device_del_completion(rs, str);
 }
 
-void device_state_completion(ReadLineState *rs, int nb_args, const char *str)
+void device_set_completion(ReadLineState *rs, int nb_args, const char *str)
 {
-}
+    GSList *list, *elt;
+    size_t len;
 
-void device_resume_completion(ReadLineState *rs, int nb_args, const char *str)
-{
-}
-
-void device_standby_completion(ReadLineState *rs, int nb_args, const char *str)
-{
+    if (nb_args == 1) {
+        /* Complete device types that support standby */
+        len = strlen(str);
+        readline_set_completion_index(rs, len);
+        list = elt = object_class_get_list(TYPE_DEVICE, false);
+        while (elt) {
+            DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
+                                                 TYPE_DEVICE);
+            if (dc->can_standby) {
+                readline_add_completion_of(rs, str,
+                    object_class_get_name(OBJECT_CLASS(dc)));
+            }
+            elt = elt->next;
+        }
+        g_slist_free(list);
+    } else if (nb_args == 2) {
+        /* Complete state argument */
+        readline_set_completion_index(rs, strlen(str));
+        readline_add_completion_of(rs, str, "active");
+        readline_add_completion_of(rs, str, "standby");
+    }
 }
 
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp)
@@ -1371,6 +1236,22 @@ QemuOptsList qemu_device_opts = {
          * no elements => accept any
          * sanity checking will happen later
          * when setting device properties
+         */
+        { /* end of list */ }
+    },
+};
+
+QemuOptsList qemu_deviceset_opts = {
+    .name = "deviceset",
+    .implied_opt_name = "driver",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_deviceset_opts.head),
+    .desc = {
+        /*
+         * no fixed schema; parameters include:
+         * - driver=<device-name>
+         * - id=<device-id> (optional)
+         * - state=standby|active
+         * - other optional props for locating the device
          */
         { /* end of list */ }
     },

@@ -1224,21 +1224,21 @@ static int device_init_func(void *opaque, QemuOpts *opts, Error **errp)
     }
     return 0;
 }
-#if 0
-static int device_state_init_func(void *opaque, QemuOpts *opts, Error **errp)
-{
-    const QDict *qdict = qemu_opts_to_qdict(opts, NULL);
 
-    qmp_device_state(qdict, errp);
+static int deviceset_init_func(void *opaque, QemuOpts *opts, Error **errp)
+{
+    QDict *qdict = qemu_opts_to_qdict(opts, NULL);
+
+    qmp_device_set(qdict, errp);
+    qobject_unref(qdict);
     if (*errp) {
         error_report_err(*errp);
-        qobject_unref(qdict);
         return -1;
     }
-    qobject_unref(qdict);
+
     return 0;
 }
-#endif
+
 static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
     Error *local_err = NULL;
@@ -2683,11 +2683,9 @@ static void qemu_create_cli_devices(void)
         object_unref(OBJECT(dev));
         loc_pop(&opt->loc);
     }
-#if 0
-    /* preconfigure the states of the devices */
-    qemu_opts_foreach(qemu_find_opts("devicestate"),
-                      device_state_init_func, NULL, &error_fatal);
-#endif
+    qemu_opts_foreach(qemu_find_opts("deviceset"), deviceset_init_func, NULL,
+                      &error_fatal);
+
     rom_reset_order_override();
 }
 
@@ -2788,6 +2786,7 @@ void qemu_init(int argc, char **argv)
     qemu_add_drive_opts(&bdrv_runtime_opts);
     qemu_add_opts(&qemu_chardev_opts);
     qemu_add_opts(&qemu_device_opts);
+    qemu_add_opts(&qemu_deviceset_opts);
     qemu_add_opts(&qemu_netdev_opts);
     qemu_add_opts(&qemu_nic_opts);
     qemu_add_opts(&qemu_net_opts);

@@ -362,18 +362,19 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 void qdev_standby_now(DeviceState *dev, Error **errp)
 {
     StandbyHandler *handler;
-    Error *local_err = NULL;
 
     /*
-     * we are here because OSPM has already issued ACPI _EJx to the platform
-     * after eject-request notification was sent to the OSPM to perform graceful
-     * eject of the device.
+     * We are here because the OSPM has already issued the ACPI _EJx method
+     * after receiving an Eject Request (Notify(..., 0x03)). This sequence
+     * initiates a graceful eject of the device from the platform.
      */
     handler = standby_get_handler(dev);
     assert(handler);
 
-    standby_handler_enter(handler, dev, &local_err);
-    if (local_err != NULL) {
+    standby_handler_enter(handler, dev, errp);
+    if (*errp) {
+        error_prepend(errp, "failed to put device %s into standby",
+                      object_get_typename(OBJECT(dev)));
         return;
     }
 
@@ -769,23 +770,6 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
             }
         }
     } else if (!value && dev->standby) {
-        if (!dev->realized) {
-            if (!phase_check(PHASE_MACHINE_READY)) {
-                /* case: when devices are resumed using -deviceset option */
-                qdev_realize(dev);
-                qatomic_store_release(&dev->standby, value);
-                smp_wmb();
-                return;
-            }
-            /*
-             * defer realize this device now, by doing this we saved some
-             * bootime. This is particularly useful for devices like cpus
-             */
-            if (dev->defer_realize) {
-                qdev_realize(dev);
-            }
-        }
-
         standby_handler_exit(handler, dev, &local_err);
         if (local_err != NULL) {
             goto fail;
@@ -811,6 +795,70 @@ static void device_set_standby(Object *obj, bool value, Error **errp)
 
 fail:
     error_propagate(errp, local_err);
+}
+
+static void
+device_set_standby(Object *obj, bool value, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    StandbyHandlerClass *sdc;
+    StandbyHandler *handler;
+
+    warn_report("[%s] device-ID%s\n", __func__, dev->id);
+
+    if (!dc->can_standby) {
+        error_setg(errp, "Device '%s' does not support standby/resume",
+                   object_get_typename(obj));
+        return;
+    }
+
+    handler = standby_get_handler(dev);
+    assert(handler);
+
+    if (value && !dev->standby) {
+        if (!dev->realized) {
+            dev->standby = true;
+            return;
+        }
+
+        sdc = STANDBY_HANDLER_GET_CLASS(handler);
+        /* check if device need to do this asynchronously */
+        if (sdc->request_standby) {
+            standby_handler_request(handler, dev, errp);
+        } else {
+            qdev_standby_now(dev, errp);
+        }
+
+        if (*errp) {
+            error_prepend(errp, "Failed to enter standby for device '%s': ",
+                          dev->id);
+            return;
+        }
+    } else if (!value && dev->standby) {
+        standby_handler_exit(handler, dev, errp);
+        if (*errp) {
+            error_prepend(errp, "Failed to exit standby for device '%s': ",
+                          dev->id);
+            return;
+        }
+
+        if (qdev_get_vmsd(dev)) {
+            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
+                                               VMSTATE_INSTANCE_ID_ANY,
+                                               qdev_get_vmsd(dev), dev,
+                                               dev->instance_id_alias,
+                                               dev->alias_required_for_version,
+                                               errp) < 0) {
+                error_prepend(errp, "Failed to re-register device '%s': ",
+                              dev->id);
+                return;
+            }
+        }
+
+        qatomic_store_release(&dev->standby, value);
+        smp_wmb();
+    }
 }
 
 static void device_initfn(Object *obj)

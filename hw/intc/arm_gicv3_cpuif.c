@@ -1052,7 +1052,7 @@ void gicv3_cpuif_update(GICv3CPUState *cs)
     ARMCPU *cpu = ARM_CPU(cs->cpu);
     CPUARMState *env = &cpu->env;
 
-    if (!gicv3_cpu_accessible(cs)) {
+    if (!gicv3_gicc_accessible(OBJECT(cs->gic), CPU(cpu)->cpu_index)) {
         return;
     }
 
@@ -2040,7 +2040,7 @@ static void icc_generate_sgi(CPUARMState *env, GICv3CPUState *cs,
     for (i = 0; i < s->num_cpu; i++) {
         GICv3CPUState *ocs = &s->cpu[i];
 
-        if (!gicv3_cpu_accessible(ocs)) {
+        if (!gicv3_gicc_accessible(OBJECT(s), i)) {
             continue;
         }
 

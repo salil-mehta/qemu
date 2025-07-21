@@ -707,17 +707,6 @@ static inline DeviceState *create_acpi_ged(VirtMachineState *vms)
 
     return dev;
 }
-#if 0
-static void virt_add_gic_cpuhp_notifier(VirtMachineState *vms)
-{
-    MachineClass *mc = MACHINE_GET_CLASS(vms);
-
-    if (mc->has_hotpluggable_cpus) {
-        Notifier *cpuhp_notifier = gicv3_cpuhp_notifier(vms->gic);
-        notifier_list_add(&vms->cpuhp_notifiers, cpuhp_notifier);
-    }
-}
-#endif
 
 static void create_its(VirtMachineState *vms)
 {
@@ -791,47 +780,6 @@ const int timer_irq[] = {
     [GTIMER_HYP]  = ARCH_TIMER_NS_EL2_IRQ,
     [GTIMER_SEC]  = ARCH_TIMER_S_EL1_IRQ,
 };
-
-#if 0
-static void unwire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
-{
-    MachineState *ms = MACHINE(vms);
-    unsigned int max_cpus = ms->smp.max_cpus;
-    DeviceState *cpudev = DEVICE(cs);
-    DeviceState *gicdev = vms->gic;
-    int cpu = CPU(cs)->cpu_index;
-    int type = vms->gic_version;
-    int irq, num_gpio_in;
-
-    for (irq = 0; irq < ARRAY_SIZE(timer_irq); irq++) {
-        qdev_disconnect_gpio_out_named(cpudev, NULL, irq);
-    }
-
-    if (type != VIRT_GIC_VERSION_2) {
-        qdev_disconnect_gpio_out_named(cpudev, "gicv3-maintenance-interrupt",
-                                       0);
-    } else if (vms->virt) {
-        qdev_disconnect_gpio_out_named(gicdev, SYSBUS_DEVICE_GPIO_IRQ,
-                                       cpu + 4 * max_cpus);
-    }
-
-    /*
-     * RFC: Question: This currently does not takes care of intimating the
-     * devices which might be sitting on system bus. Do we need a
-     * sysbus_disconnect_irq() which also does the job of notification beside
-     * disconnection?
-     */
-    qdev_disconnect_gpio_out_named(cpudev, "pmu-interrupt", 0);
-
-    /* Unwire GIC's IRQ/FIQ/VIRQ/VFIQ/NMI/VINMI interrupt outputs to CPU */
-    num_gpio_in = (vms->gic_version != VIRT_GIC_VERSION_2) ?
-                                                NUM_GPIO_IN : NUM_GICV2_GPIO_IN;
-    for (irq = 0; irq < num_gpio_in; irq++) {
-        qdev_disconnect_gpio_out_named(gicdev, SYSBUS_DEVICE_GPIO_IRQ,
-                                        cpu + irq * max_cpus);
-    }
-}
-#endif
 
 static void wire_gic_cpu_irqs(VirtMachineState *vms, CPUState *cs)
 {
@@ -995,9 +943,6 @@ static void create_gic(VirtMachineState *vms, MemoryRegion *mem)
     } else if (vms->gic_version == VIRT_GIC_VERSION_2) {
         create_v2m(vms);
     }
-
-    /* add GIC CPU hot(un)plug update notifier */
-    //virt_add_gic_cpuhp_notifier(vms);
 }
 
 static void create_uart(const VirtMachineState *vms, int uart,
@@ -1947,28 +1892,57 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
 }
 
 static void
-virt_cpu_resume(StandbyHandler *handler, DeviceState *dev,
-                               Error **errp)
+virt_cpu_resume(StandbyHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
-    Error *local_err = NULL;
+    Error *rollback_err = NULL;
+    int ret;
 
-    if (!dc->can_standby) {
-        error_setg(errp, "CPU standby/resume not supported on this machine");
-        return;
-    }
+    if (!dev->realized) {
+        if (!phase_check(PHASE_MACHINE_READY)) {
+            /* case: when cpu is resumed using -deviceset option */
+            qdev_realize(dev);
+            dev->defer_realize = false;
+            return;
+        }
 
-    /* send cpu standby exit event (cpu enabled) to guest */
-    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
-    if (local_err) {
-        goto fail;
+        /*
+         * If supported, CPU realization in standby mode can be deferred
+         * until the CPU is resumed, reducing boot time. Currently, this
+         * applies only once at boot — subsequent resumes do not re-attempt
+         * realization, as CPUs remain realized after first resume.
+         */
+        if (dev->defer_realize) {
+            qdev_realize(dev);
+            dev->defer_realize = false;
+        }
     }
 
     qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
+
+    /* mark GICC accessible */
+    gicv3_mark_gicc_accessible(OBJECT(vms->gic), cs->cpu_index, errp);
+    if (*errp) {
+        error_setg(errp, "couldn't mark GICC accessibile for cpu %d",
+                   cs->cpu_index);
+        goto fail_accessible;
+    }
+
+    /*
+     * Notify the guest that a CPU has become active (i.e., ACPI _STA.Ena = 1).
+     * This triggers a Device Check (Notify(..., 0x80)) event via GED, prompting
+     * the OSPM to re-evaluate the device status through the _STA method.
+     */
+    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+    ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+    if (*errp) {
+        error_setg(errp, "failed to request standby mode for cpu %d",
+                   cs->cpu_index);
+        goto fail_resume;
+    }
 
     /* update the firmware information for the next boot. */
     vms->boot_cpus++;
@@ -1977,8 +1951,21 @@ virt_cpu_resume(StandbyHandler *handler, DeviceState *dev,
     }
 
     return;
-fail:
-    error_propagate(errp, local_err);
+fail_resume:
+    /* Mark GICC inaccessible again */
+    gicv3_mark_gicc_inaccessible(OBJECT(vms->gic), cs->cpu_index,
+                                 &rollback_err);
+    if (rollback_err) {
+        /* this is pathological check */
+        warn_report("Failed to revert GICC accessibility for CPU %d",
+                    cs->cpu_index);
+        error_free(rollback_err);
+    }
+fail_accessible:
+    /* put KVM vCPU to sleep but keep it realized in Qemu */
+    ret = arm_set_cpu_off(arm_cpu_mp_affinity(ARM_CPU(cs)));
+    assert(ret == QEMU_ARM_POWERCTL_RET_SUCCESS ||
+           ret == QEMU_ARM_POWERCTL_IS_OFF);
 }
 
 static void
@@ -1990,34 +1977,29 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
     ARMCPU *cpu = ARM_CPU(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
-    Error *local_err = NULL;
 
     warn_report("[%s] cpu%d\n", __func__, cs->cpu_index);
 
-    if (!dc->can_standby) {
-        error_setg(errp, "CPU standby/resume not supported on this machine");
-        return;
-    }
-
     if (cs->cpu_index == first_cpu->cpu_index) {
-        error_setg(errp, "Boot CPU(id%d=%d:%d:%d:%d) standby/resume !supported",
+        error_setg(errp, "Cannot put boot CPU (id=%d [%d:%d:%d:%d]) on standby",
                    first_cpu->cpu_index, cpu->socket_id, cpu->cluster_id,
                    cpu->core_id, cpu->thread_id);
         return;
     }
 
-    /* intimate guest about this vCPU standby event */
+    /*
+     * Putting a CPU into standby triggers an Eject Request (Notify(..., 0x03))
+     * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
+     */
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->request_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
-    if (local_err) {
-        goto fail;
+    ssc->request_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+    if (*errp) {
+        error_setg(errp, "failed to request standby mode for cpu %d",
+                   cs->cpu_index);
+        return;
     }
 
     warn_report("[%s] cpu%d Exit\n", __func__, cs->cpu_index);
-
-    return;
-fail:
-    error_propagate(errp, local_err);
 }
 
 static void
@@ -2026,14 +2008,16 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
     VirtMachineState *vms = VIRT_MACHINE(handler);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
-    Error *local_err = NULL;
+    int ret;s
 
     warn_report("[%s] cpu%d Enter\n", __func__, cs->cpu_index);
 
     ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, &local_err);
-    if (local_err) {
-        goto fail;
+    ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+    if (*errp) {
+        error_setg(errp, "failed to enter cpu %d in standby mode",
+                   cs->cpu_index);
+        return;
     }
 
     qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
@@ -2042,11 +2026,23 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
         fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
     }
 
-    warn_report("[%s] cpu%d Exit\n", __func__, cs->cpu_index);
+    /*
+     * Ensure the vCPU is no longer scheduled while in standby;
+     * this puts the KVM vCPU to sleep.
+     */
+    ret = arm_set_cpu_off(arm_cpu_mp_affinity(ARM_CPU(cs)));
+    assert(ret == QEMU_ARM_POWERCTL_RET_SUCCESS ||
+           ret == QEMU_ARM_POWERCTL_IS_OFF);
 
-    return;
-fail:
-    error_propagate(errp, local_err);
+    /* mark GICC inaccessible */
+    gicv3_mark_gicc_inaccessible(OBJECT(vms->gic), cs->cpu_index, errp);
+    if (*errp) {
+        error_setg(errp, "couldn't mark GICC accessibile for cpu %d",
+                   cs->cpu_index);
+        return;
+    }
+
+    warn_report("[%s] cpu%d Exit\n", __func__, cs->cpu_index);
 }
 
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
@@ -2693,7 +2689,6 @@ static void machvirt_init(MachineState *machine)
 
     create_fdt(vms);
 
-    notifier_list_init(&vms->cpuhp_notifiers);
     vms->device_listener.find_device = virt_find_device;
     device_listener_register(&vms->device_listener);
 

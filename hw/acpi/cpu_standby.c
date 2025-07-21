@@ -47,16 +47,6 @@ acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
     }
 }
 
-static bool acpi_check_cpu_enabled_status(DeviceState *dev)
-{
-    /* active qemu vCPU should return ACPI _STA.Ena=true */
-    if (qdev_check_active(dev, &error_warn)) {
-        return true;
-    }
-
-    return false;
-}
-
 static uint64_t
 acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -71,7 +61,7 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_FLAGS_OFFSET_RW:
-        val |= acpi_check_cpu_enabled_status(DEVICE(cdev->cpu)) ? 1 : 0;
+        val |= qdev_check_active(DEVICE(cdev->cpu)) ? 1 : 0;
         val |= cdev->devchk_pending ? 2 : 0;
         val |= cdev->ejrqst_pending  ? 4 : 0;
         val |= cdev->cpu ? 32 : 0;

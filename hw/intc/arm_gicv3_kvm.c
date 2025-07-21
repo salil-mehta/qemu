@@ -465,7 +465,7 @@ static void kvm_arm_gicv3_put(GICv3State *s)
          * 'inaccessible', because their corresponding QOM vCPU objects
          * are in standby state.
          */
-        if (!gicv3_cpu_accessible(c)) {
+        if (!gicv3_gicc_accessible(OBJECT(s), ncpu)) {
             continue;
         }
 
@@ -631,7 +631,7 @@ static void kvm_arm_gicv3_get(GICv3State *s)
          * don't attempt to access KVM VGIC for the disabled vCPUs where
          * GICv3CPUState is inaccessible.
          */
-        if (!gicv3_cpu_accessible(c)) {
+        if (!gicv3_gicc_accessible(OBJECT(s), ncpu)) {
             continue;
         }
 
