@@ -90,6 +90,7 @@
 #include "qemu/guest-random.h"
 #include "qapi/qmp/qdict.h"
 #include "hw/standby.h"
+#include "arm-powerctl.h"
 
 static GlobalProperty arm_virt_compat[] = {
     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
@@ -1895,30 +1896,18 @@ static void
 virt_cpu_resume(StandbyHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
     Error *rollback_err = NULL;
     int ret;
 
+    /*
+     * If supported, CPU realization can be deferred until first resume,
+     * reducing boot time. Subsequent resumes skip this, as CPUs remain
+     * realized
+     */
     if (!dev->realized) {
-        if (!phase_check(PHASE_MACHINE_READY)) {
-            /* case: when cpu is resumed using -deviceset option */
-            qdev_realize(dev);
-            dev->defer_realize = false;
-            return;
-        }
-
-        /*
-         * If supported, CPU realization in standby mode can be deferred
-         * until the CPU is resumed, reducing boot time. Currently, this
-         * applies only once at boot — subsequent resumes do not re-attempt
-         * realization, as CPUs remain realized after first resume.
-         */
-        if (dev->defer_realize) {
-            qdev_realize(dev);
-            dev->defer_realize = false;
-        }
+        qdev_realize(dev, NULL, errp);
     }
 
     qemu_register_reset(do_cpu_reset, ARM_CPU(cs));
@@ -1932,16 +1921,21 @@ virt_cpu_resume(StandbyHandler *handler, DeviceState *dev, Error **errp)
     }
 
     /*
-     * Notify the guest that a CPU has become active (i.e., ACPI _STA.Ena = 1).
-     * This triggers a Device Check (Notify(..., 0x80)) event via GED, prompting
-     * the OSPM to re-evaluate the device status through the _STA method.
+     * Notify the guest that a CPU is active (_STA.Ena = 1), triggering a Device
+     * Check (Notify(..., 0x80)) via GED. This prompts OSPM to re-evaluate _STA.
+     *
+     * Only notify after the VM is ready—i.e., the guest kernel is initialized.
+     * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
+     * so sending a notification is pointless.
      */
-    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
-    if (*errp) {
-        error_setg(errp, "failed to request standby mode for cpu %d",
-                   cs->cpu_index);
-        goto fail_resume;
+    if (phase_check(PHASE_MACHINE_READY)) {
+        ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+        ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+        if (*errp) {
+            error_setg(errp, "failed to request standby mode for cpu %d",
+                       cs->cpu_index);
+            goto fail_resume;
+        }
     }
 
     /* update the firmware information for the next boot. */
@@ -1973,7 +1967,6 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
                         Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     ARMCPU *cpu = ARM_CPU(dev);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
@@ -2008,7 +2001,7 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
     VirtMachineState *vms = VIRT_MACHINE(handler);
     StandbyHandlerClass *ssc;
     CPUState *cs = CPU(dev);
-    int ret;s
+    int ret;
 
     warn_report("[%s] cpu%d Enter\n", __func__, cs->cpu_index);
 

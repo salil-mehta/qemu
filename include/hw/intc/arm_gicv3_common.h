@@ -27,6 +27,7 @@
 #include "hw/sysbus.h"
 #include "hw/intc/arm_gic_common.h"
 #include "qom/object.h"
+#include "qapi/error.h"
 
 /*
  * Maximum number of possible interrupts, determined by the GIC architecture.

@@ -233,15 +233,13 @@ void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
 
     assert(cdev->cpu);
 
-    if (phase_check(PHASE_MACHINE_READY)) {
-        /*
-         * Tell OSPM via GED that a standby cpu is being resumed. Also, mark
-         * 'device-check' event pending for this cpu. This will eventually
-         * result in OSPM evaluating the ACPI _EVT method and scan of cpus
-         */
-        cdev->devchk_pending = true;
-        acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
-    }
+    /*
+     * Tell OSPM via GED that a standby cpu is being resumed. Also, mark
+     * 'device-check' event pending for this cpu. This will eventually
+     * result in OSPM evaluating the ACPI _EVT method and scan of cpus
+     */
+    cdev->devchk_pending = true;
+    acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
 }
 
 void acpi_cpu_request_standby_cb(StandbyHandler *handler,

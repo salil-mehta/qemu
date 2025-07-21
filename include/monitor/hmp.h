@@ -84,7 +84,7 @@ void hmp_change_medium(Monitor *mon, const char *device, const char *target,
 void hmp_migrate(Monitor *mon, const QDict *qdict);
 void hmp_device_add(Monitor *mon, const QDict *qdict);
 void hmp_device_del(Monitor *mon, const QDict *qdict);
-void hmp_device_state(Monitor *mon, const QDict *qdict);
+void hmp_device_set(Monitor *mon, const QDict *qdict);
 void hmp_device_resume(Monitor *mon, const QDict *qdict);
 void hmp_device_standby(Monitor *mon, const QDict *qdict);
 void hmp_dump_guest_memory(Monitor *mon, const QDict *qdict);
@@ -120,7 +120,7 @@ void object_add_completion(ReadLineState *rs, int nb_args, const char *str);
 void object_del_completion(ReadLineState *rs, int nb_args, const char *str);
 void device_add_completion(ReadLineState *rs, int nb_args, const char *str);
 void device_del_completion(ReadLineState *rs, int nb_args, const char *str);
-void device_state_completion(ReadLineState *rs, int nb_args, const char *str);
+void device_set_completion(ReadLineState *rs, int nb_args, const char *str);
 void device_resume_completion(ReadLineState *rs, int nb_args, const char *str);
 void device_standby_completion(ReadLineState *rs, int nb_args, const char *str);
 void sendkey_completion(ReadLineState *rs, int nb_args, const char *str);

@@ -12,6 +12,9 @@
 #include "qemu/osdep.h"
 #include "gicv3_internal.h"
 #include "cpu.h"
+#include "qemu/log.h"
+#include "monitor/monitor.h"
+#include "qapi/visitor.h"
 
 void gicv3_set_gicv3state(CPUState *cpu, GICv3CPUState *s)
 {
@@ -65,7 +68,7 @@ void gicv3_init_cpuif(GICv3State *s)
     ARMGICv3CommonClass *agcc = ARM_GICV3_COMMON_GET_CLASS(s);
     int i;
 
-    for (int i = 0; i < s->num_cpu; i++) {
+    for (i = 0; i < s->num_cpu; i++) {
         gchar *propname = g_strdup_printf("gicc-accessible[%d]", i);
         object_property_add(OBJECT(s), propname, "bool",
                             gicv3_get_gicc_accessibility,

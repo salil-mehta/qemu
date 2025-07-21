@@ -2862,8 +2862,6 @@ static void arm_cpu_instance_init(Object *obj)
     ARMCPUClass *acc = ARM_CPU_GET_CLASS(obj);
     DeviceState *dev = DEVICE(obj);
 
-    /* we defer realize cpsu which are present but on standby */
-    dev->defer_realize = true;
     acc->info->initfn(obj);
     arm_cpu_post_init(obj);
 }
