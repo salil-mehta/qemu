@@ -722,35 +722,6 @@ SRST
 ERST
 
     {
-        .name       = "device_resume",
-        .args_type  = "id:s?,device:O?",
-        .params     = "[device] [driver[,prop=value][,...]]",
-        .help       = "resume device from standby mode",
-        .cmd        = hmp_device_resume,
-        .command_completion = device_resume_completion,
-    },
-
-SRST
-``device_resume`` *id* *config*
-  Resume device.
-ERST
-
-    {
-        .name       = "device_standby",
-        .args_type  = "id:s?,device:O?",
-        .params     = "[device] [driver[,prop=value][,...]]",
-        .help       = "put device on standby mode",
-        .cmd        = hmp_device_standby,
-        .command_completion = device_standby_completion,
-    },
-
-SRST
-``device_standby`` *id* *config*
-  Put device [*id*] [*config*] on standby mode. Either *id* or *config*
-  might be specified *id* can be a  QOM object path.as well.
-ERST
-
-    {
         .name       = "cpu",
         .args_type  = "index:i",
         .params     = "index",

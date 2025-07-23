@@ -471,22 +471,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
          * Accordingly, set the QOM `GICv3CPUState` as either accessible or
          * inaccessible based on the `CPUState` of the associated QOM vCPU
          */
-        if (qdev_check_active(DEVICE(cpu))) {
-           gicv3_mark_gicc_accessible(OBJECT(s), i, errp);
-           if (*errp) {
-               error_prepend(errp, "Failed to mark GICC accessible, CPU %d:",
-                             cpu->cpu_index);
-               return;
-           }
-        } else {
-           gicv3_mark_gicc_inaccessible(OBJECT(s), i, errp);
-           if (*errp) {
-               error_prepend(errp, "Failed to mark GICC inaccessible, CPU %d:",
-                             cpu->cpu_index);
-               return;
-           }
-        }
-
+        s->cpu[i].gicc_accessible = qdev_check_active(DEVICE(cpu));
         s->cpu[i].cpu = cpu;
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */

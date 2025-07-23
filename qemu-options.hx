@@ -1198,6 +1198,28 @@ SRST
 
 ERST
 
+DEF("deviceset", HAS_ARG, QEMU_OPTION_deviceset,
+    "-device driver[,prop[=value][,...]]\n"
+    "                sets device property (based on driver)\n"
+    "                prop=value,... sets driver properties\n"
+    "                use '-deviceset help' to print all possible drivers\n"
+    "                use '-deviceset driver,help' to print all possible properties\n",
+    QEMU_ARCH_ALL)
+SRST
+``-deviceset driver[,prop[=value][,...]]``
+    Sets device driver property. prop=value sets driver properties. Valid
+    properties depend on the driver. To get help on possible drivers and
+    properties, use ``-deviceset help`` and ``-deviceset driver,help``.
+
+    Some drivers are:
+
+``-deviceset host-arm-cpu,id=id[,prop[=value][,...][,state=standby]]``
+    Sets state of the ARM CPU to standby.
+
+    ``state=state``
+        The active/standby sattes associated with this device.
+ERST
+
 DEF("name", HAS_ARG, QEMU_OPTION_name,
     "-name string1[,process=string2][,debug-threads=on|off]\n"
     "                set the name of the guest\n"

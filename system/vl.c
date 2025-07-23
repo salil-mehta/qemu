@@ -3384,6 +3384,23 @@ void qemu_init(int argc, char **argv)
                     }
                 }
                 break;
+            case QEMU_OPTION_deviceset:
+                if (optarg[0] == '{') {
+                    QObject *obj = qobject_from_json(optarg, &error_fatal);
+                    QDict *qdict = qobject_to(QDict, obj);
+                    if (!qdict) {
+                        error_report("Invalid JSON object for -deviceset");
+                        exit(1);
+                    }
+                    qmp_device_set(qdict, &error_fatal);
+                    qobject_unref(qdict);
+                } else {
+                    if (!qemu_opts_parse_noisily(qemu_find_opts("deviceset"),
+                                                 optarg, true)) {
+                        exit(1);
+                    }
+                }
+                break;
             case QEMU_OPTION_smp:
                 machine_parse_property_opt(qemu_find_opts("smp-opts"),
                                            "smp", optarg);

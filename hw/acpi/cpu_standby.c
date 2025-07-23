@@ -126,7 +126,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
              */
             trace_cpusb_acpi_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            qdev_standby_now(dev, NULL);
+            qdev_standby_now(dev, &error_fatal);
         }
         break;
     case ACPI_CPU_CMD_OFFSET_WR:
