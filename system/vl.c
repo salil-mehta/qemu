@@ -1231,12 +1231,8 @@ static int deviceset_init_func(void *opaque, QemuOpts *opts, Error **errp)
 
     qmp_device_set(qdict, errp);
     qobject_unref(qdict);
-    if (*errp) {
-        error_report_err(*errp);
-        return -1;
-    }
 
-    return 0;
+    return *errp ? -1 : 0;
 }
 
 static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
@@ -2683,6 +2679,8 @@ static void qemu_create_cli_devices(void)
         object_unref(OBJECT(dev));
         loc_pop(&opt->loc);
     }
+
+    /* add deferred 'deviceset' list handling - common to JSON/non-JSON path */
     qemu_opts_foreach(qemu_find_opts("deviceset"), deviceset_init_func, NULL,
                       &error_fatal);
 
@@ -3386,14 +3384,21 @@ void qemu_init(int argc, char **argv)
                 break;
             case QEMU_OPTION_deviceset:
                 if (optarg[0] == '{') {
-                    QObject *obj = qobject_from_json(optarg, &error_fatal);
-                    QDict *qdict = qobject_to(QDict, obj);
-                    if (!qdict) {
-                        error_report("Invalid JSON object for -deviceset");
-                        exit(1);
-                    }
-                    qmp_device_set(qdict, &error_fatal);
-                    qobject_unref(qdict);
+                     /* JSON input: convert to QDict and then to QemuOpts */
+                     QObject *obj = qobject_from_json(optarg, &error_fatal);
+                     QDict *qdict = qobject_to(QDict, obj);
+                     if (!qdict) {
+                         error_report("Invalid JSON object for -deviceset");
+                         exit(1);
+                     }
+
+                     opts = qemu_opts_from_qdict(qemu_find_opts("deviceset"),
+                                                 qdict, &error_fatal);
+                     qobject_unref(qdict);
+                     if (!opts) {
+                         error_report_err(error_fatal);
+                         exit(1);
+                     }
                 } else {
                     if (!qemu_opts_parse_noisily(qemu_find_opts("deviceset"),
                                                  optarg, true)) {
