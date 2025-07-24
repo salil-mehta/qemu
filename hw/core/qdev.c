@@ -752,6 +752,7 @@ device_set_standby(Object *obj, bool value, Error **errp)
     assert(handler);
 
     if (value && !dev->standby) {
+        /* device 'Standby' handling */
         if (!dev->realized) {
             dev->standby = true;
             return;
@@ -759,7 +760,7 @@ device_set_standby(Object *obj, bool value, Error **errp)
 
         sdc = STANDBY_HANDLER_GET_CLASS(handler);
         /* check if device need to do this asynchronously */
-        if (sdc->request_standby) {
+        if (sdc->request_standby && phase_check(PHASE_MACHINE_READY)) {
             standby_handler_request(handler, dev, errp);
         } else {
             qdev_standby_now(dev, errp);
@@ -771,6 +772,7 @@ device_set_standby(Object *obj, bool value, Error **errp)
             return;
         }
     } else if (!value && dev->standby) {
+        /* device 'resumption' handling */
         standby_handler_exit(handler, dev, errp);
         if (*errp) {
             error_prepend(errp, "Failed to exit standby for device '%s': ",

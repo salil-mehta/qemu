@@ -1881,9 +1881,9 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
 
     if (!strcmp(cputype_from_typename(typename), TYPE_ARM_CPU)) {
         dev = virt_find_cpu(opts, from_json, errp);
-        if (!dev)
+        if (*errp)
         {
-            error_setg(errp, "failed to find matching cpu device");
+            error_setg(errp, "Error in finding matching cpu device");
             return NULL;
         }
         return dev;
@@ -2005,12 +2005,19 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
 
     warn_report("[%s] cpu%d Enter\n", __func__, cs->cpu_index);
 
-    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
-    if (*errp) {
-        error_setg(errp, "failed to enter cpu %d in standby mode",
-                   cs->cpu_index);
-        return;
+    /*
+     * Only notify after the VM is ready—i.e., the guest kernel is initialized.
+     * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
+     * so sending a notification is pointless.
+     */
+    if (phase_check(PHASE_MACHINE_READY)) {
+        ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
+        ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+        if (*errp) {
+            error_setg(errp, "failed to enter cpu %d in standby mode",
+                       cs->cpu_index);
+            return;
+        }
     }
 
     qemu_unregister_reset(do_cpu_reset, ARM_CPU(cs));
