@@ -468,8 +468,26 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         uint64_t cpu_affid;
 
         /*
-         * Accordingly, set the QOM `GICv3CPUState` as either accessible or
-         * inaccessible based on the `CPUState` of the associated QOM vCPU
+         * Ref: Arm Generic Interrupt Controller Architecture Specification
+         * (GIC Architecture version 3 and version 4), IHI0069H_b,
+         * Section 11.1: Power Management
+         * https://developer.arm.com/documentation/ihi0069
+         *
+         * According to this specification, the CPU interface and the
+         * Processing Element (PE) must reside in the same power domain.
+         * Therefore, when a CPU/PE is powered off, its corresponding CPU
+         * interface must also be in the off state or in a quiescent state—
+         * depending on the state of the associated Redistributor.
+         *
+         * The Redistributor may reside in a separate power domain and may
+         * remain powered even when the associated PE is turned off.
+         *
+         * Accessing the GIC CPU interface while the PE is powered down can
+         * lead to UNPREDICTABLE behavior.
+         *
+         * Accordingly, the QOM object `GICv3CPUState` should be marked as
+         * either accessible or inaccessible based on the power state of the
+         * associated `CPUState` vCPU.
          */
         s->cpu[i].gicc_accessible = qdev_check_active(DEVICE(cpu));
         s->cpu[i].cpu = cpu;
