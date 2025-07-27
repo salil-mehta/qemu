@@ -768,6 +768,22 @@ ERST
 SRST
   ``info hotpluggable-cpus``
     Show information about hotpluggable CPUs
+
+ERST
+
+{
+    .name       = "cpus-powerstate",
+    .args_type  = "",
+    .params     = "",
+    .help       = "Show information about CPU logical power states (On, Standby, Off)",
+    .cmd        = hmp_info_cpus_powerstate,
+    .flags      = "p",
+},
+
+SRST
+  ``info cpus-powerstate``
+    Show information about CPU logical power states such as ``On``, ``Standby``, or ``Off``.
+
 ERST
 
     {

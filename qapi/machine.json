@@ -1108,6 +1108,63 @@
              'allow-preconfig': true }
 
 ##
+# @CPUPowerState:
+#
+# Logical power state of a CPU.
+#
+# @on: CPU is online and executing or ready to execute
+# @standby: CPU is suspended but is powered on
+# @off: CPU is offlined/powered off and parked (not executing, but still known to system)
+##
+{ 'enum': 'CPUPowerState',
+  'data': ['on', 'standby', 'off'] }
+
+##
+# @CPUPowerStateInfo:
+#
+# Info about a CPU's logical power state.
+#
+# @id: CPU index
+# @core-id: Core ID (optional)
+# @socket-id: Socket ID (optional)
+# @cluster-id: Cluster ID (optional)
+# @thread-id: Thread ID (optional)
+# @node-id: NUMA node ID (optional)
+# @drawer-id: Drawer ID (optional, platform-specific)
+# @book-id: Book ID (optional, platform-specific)
+# @die-id: Die ID (optional)
+# @module-id: Module ID (optional)
+# @vcpus-count: Virtual CPU threads under this logical CPU (optional)
+# @qom-path: QOM path of the CPU device (optional)
+# @state: CPU power state (on/standby/off)
+##
+{ 'struct': 'CPUPowerStateInfo',
+  'data': {
+    'id': 'int',
+    '*core-id': 'int',
+    '*socket-id': 'int',
+    '*cluster-id': 'int',
+    '*thread-id': 'int',
+    '*node-id': 'int',
+    '*drawer-id': 'int',
+    '*book-id': 'int',
+    '*die-id': 'int',
+    '*module-id': 'int',
+    '*vcpus-count': 'int',
+    '*qom-path': 'str',
+    'state': 'CPUPowerState'
+  } }
+
+##
+# @query-cpus-power-state:
+#
+# Returns all CPUs and their logical power states.
+#
+# Returns: a list of @CPUPowerStateInfo
+##
+{ 'command': 'query-cpus-power-state', 'returns': ['CPUPowerStateInfo'] }
+
+##
 # @set-numa-node:
 #
 # Runtime equivalent of '-numa' CLI option, available at preconfigure
