@@ -264,7 +264,7 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     dc = DEVICE_CLASS(oc);
     if (!dc->user_creatable ||
         (phase_check(PHASE_MACHINE_READY) && !dc->hotpluggable) ||
-        (phase_check(PHASE_MACHINE_READY) && !dc->can_standby)) {
+        (phase_check(PHASE_MACHINE_READY) && !dc->can_power_off)) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
                    "a pluggable device type or which can standby/resume");
         return NULL;
@@ -594,8 +594,8 @@ bool qdev_check_active(DeviceState *dev)
 {
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
 
-    if (dc->can_standby &&
-        object_property_get_bool(OBJECT(dev), "standby", NULL)) {
+    if (dc->can_power_off &&
+        object_property_get_bool(OBJECT(dev), "powered-off", NULL)) {
         return false;
     }
     return true;
@@ -1193,7 +1193,7 @@ void device_set_completion(ReadLineState *rs, int nb_args, const char *str)
         while (elt) {
             DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
                                                  TYPE_DEVICE);
-            if (dc->can_standby) {
+            if (dc->can_power_off) {
                 readline_add_completion_of(rs, str,
                     object_class_get_name(OBJECT_CLASS(dc)));
             }

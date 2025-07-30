@@ -221,7 +221,7 @@ static AcpiCpuStandbyStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState
     return NULL;
 }
 
-void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
+void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUStandbyState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
     AcpiCpuStandbyStatus *cdev;
@@ -242,9 +242,9 @@ void acpi_cpu_resume_cb(StandbyHandler *handler, CPUStandbyState *cpu_st,
     acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
 }
 
-void acpi_cpu_request_standby_cb(StandbyHandler *handler,
-                                CPUStandbyState *cpu_st,
-                                DeviceState *dev, Error **errp)
+void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
+                                 CPUStandbyState *cpu_st,
+                                 DeviceState *dev, Error **errp)
 {
     AcpiCpuStandbyStatus *cdev;
 

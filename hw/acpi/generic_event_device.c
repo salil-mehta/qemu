@@ -20,7 +20,7 @@
 #include "migration/vmstate.h"
 #include "qemu/error-report.h"
 #include "sysemu/runstate.h"
-#include "hw/standby.h"
+#include "hw/powerstate.h"
 
 static const uint32_t ged_supported_events[] = {
     ACPI_GED_MEM_HOTPLUG_EVT,
@@ -282,7 +282,8 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
     }
 }
 
-static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
+static void
+acpi_ged_device_resume_cb(PowerStateHandler *handler, DeviceState *dev,
                                       Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
@@ -295,7 +296,7 @@ static void acpi_ged_device_resume_cb(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-static void acpi_ged_device_request_standby_cb(StandbyHandler *handler,
+static void acpi_ged_device_request_standby_cb(PowerStateHandler *handler,
                                        DeviceState *dev, Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
@@ -308,7 +309,8 @@ static void acpi_ged_device_request_standby_cb(StandbyHandler *handler,
     }
 }
 
-static void acpi_ged_device_standby_cb(StandbyHandler *handler, DeviceState *dev,
+static void
+acpi_ged_device_standby_cb(PowerStateHandler *handler, DeviceState *dev,
                                 Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
@@ -542,7 +544,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(class);
-    StandbyHandlerClass *sc = STANDBY_HANDLER_CLASS(class);
+    PowerStateHandlerClass *pshc = STANDBY_HANDLER_CLASS(class);
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_CLASS(class);
 
     dc->desc = "ACPI Generic Event Device";
@@ -554,9 +556,9 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug_request = acpi_ged_unplug_request_cb;
     hc->unplug = acpi_ged_unplug_cb;
 
-    sc->exit_standby = acpi_ged_device_resume_cb;
-    sc->request_standby = acpi_ged_device_request_standby_cb;
-    sc->enter_standby = acpi_ged_device_standby_cb;
+    pshc->exit_standby = acpi_ged_device_resume_cb;
+    pshc->request_standby = acpi_ged_device_request_standby_cb;
+    pshc->enter_standby = acpi_ged_device_standby_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;
     adevc->send_event = acpi_ged_send_event;
@@ -570,7 +572,7 @@ static const TypeInfo acpi_ged_info = {
     .class_init    = acpi_ged_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
-        { TYPE_STANDBY_HANDLER },
+        { TYPE_POWERSTATE_HANDLER },
         { TYPE_ACPI_DEVICE_IF },
         { }
     }

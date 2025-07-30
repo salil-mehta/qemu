@@ -89,7 +89,7 @@
 #include "hw/char/pl011.h"
 #include "qemu/guest-random.h"
 #include "qapi/qmp/qdict.h"
-#include "hw/standby.h"
+#include "hw/powerstate.h"
 #include "arm-powerctl.h"
 
 static GlobalProperty arm_virt_compat[] = {
@@ -1893,10 +1893,10 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
 }
 
 static void
-virt_cpu_resume(StandbyHandler *handler, DeviceState *dev, Error **errp)
+virt_cpu_resume(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
-    StandbyHandlerClass *ssc;
+    PowerStateHandlerClass *pshc;
     CPUState *cs = CPU(dev);
     Error *rollback_err = NULL;
     int ret;
@@ -1929,8 +1929,8 @@ virt_cpu_resume(StandbyHandler *handler, DeviceState *dev, Error **errp)
      * so sending a notification is pointless.
      */
     if (phase_check(PHASE_MACHINE_READY)) {
-        ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-        ssc->exit_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+        pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+        pshc->exit_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
         if (*errp) {
             error_setg(errp, "failed to request standby mode for cpu %d",
                        cs->cpu_index);
@@ -1963,12 +1963,12 @@ fail_accessible:
 }
 
 static void
-virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
+virt_cpu_request_standby(PowerStateHandler *handler, DeviceState *dev,
                         Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
     ARMCPU *cpu = ARM_CPU(dev);
-    StandbyHandlerClass *ssc;
+    PowerStateHandlerClass *pshc;
     CPUState *cs = CPU(dev);
 
     warn_report("[%s] cpu%d\n", __func__, cs->cpu_index);
@@ -1984,8 +1984,8 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
      * Putting a CPU into standby triggers an Eject Request (Notify(..., 0x03))
      * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
      */
-    ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-    ssc->request_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+    pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+    pshc->request_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
     if (*errp) {
         error_setg(errp, "failed to request standby mode for cpu %d",
                    cs->cpu_index);
@@ -1996,10 +1996,11 @@ virt_cpu_request_standby(StandbyHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
+virt_cpu_enter_standby(PowerStateHandler *handler, DeviceState *dev,
+                       Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
-    StandbyHandlerClass *ssc;
+    PowerStateHandlerClass *pshc;
     CPUState *cs = CPU(dev);
     int ret;
 
@@ -2011,8 +2012,8 @@ virt_cpu_enter_standby(StandbyHandler *handler, DeviceState *dev, Error **errp)
      * so sending a notification is pointless.
      */
     if (phase_check(PHASE_MACHINE_READY)) {
-        ssc = STANDBY_HANDLER_GET_CLASS(vms->acpi_dev);
-        ssc->enter_standby(STANDBY_HANDLER(vms->acpi_dev), dev, errp);
+        pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+        pshc->enter_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
         if (*errp) {
             error_setg(errp, "failed to enter cpu %d in standby mode",
                        cs->cpu_index);
@@ -3637,7 +3638,7 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
 }
 
 static void
-virt_machine_device_request_standby(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_request_standby(PowerStateHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
@@ -3649,7 +3650,7 @@ virt_machine_device_request_standby(StandbyHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_machine_device_enter_standby(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_enter_standby(PowerStateHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
@@ -3661,7 +3662,7 @@ virt_machine_device_enter_standby(StandbyHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_machine_device_resume(StandbyHandler *handler, DeviceState *dev,
+virt_machine_device_resume(PowerStateHandler *handler, DeviceState *dev,
                                    Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
@@ -3672,11 +3673,11 @@ virt_machine_device_resume(StandbyHandler *handler, DeviceState *dev,
     }
 }
 
-static StandbyHandler *virt_machine_get_standby_handler(MachineState *machine,
-                                                        DeviceState *dev)
+static PowerStateHandler *
+virt_machine_powerstate_handler(MachineState *machine, DeviceState *dev)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        return STANDBY_HANDLER(machine);
+        return POWERSTATE_HANDLER(machine);
     }
 
     return NULL;
@@ -3758,7 +3759,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
-    StandbyHandlerClass *sc = STANDBY_HANDLER_CLASS(oc);
+    PowerStateHandlerClass *pshc = STANDBY_HANDLER_CLASS(oc);
     static const char * const valid_cpu_types[] = {
 #ifdef CONFIG_TCG
         ARM_CPU_TYPE_NAME("cortex-a7"),
@@ -3823,11 +3824,11 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
     mc->has_standby_cpus = true;
-    assert(!mc->get_standby_handler);
-    mc->get_standby_handler = virt_machine_get_standby_handler;
-    sc->request_standby = virt_machine_device_request_standby;
-    sc->enter_standby = virt_machine_device_enter_standby;
-    sc->exit_standby = virt_machine_device_resume;
+    assert(!mc->get_powerstate_handler);
+    mc->get_powerstate_handler = virt_machine_powerstate_handler;
+    pshc->request_standby = virt_machine_device_request_standby;
+    pshc->enter_standby = virt_machine_device_enter_standby;
+    pshc->exit_standby = virt_machine_device_resume;
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;
@@ -4027,7 +4028,7 @@ static const TypeInfo virt_machine_info = {
     .instance_init = virt_instance_init,
     .interfaces = (InterfaceInfo[]) {
          { TYPE_HOTPLUG_HANDLER },
-         { TYPE_STANDBY_HANDLER },
+         { TYPE_POWERSTATE_HANDLER },
          { }
     },
 };

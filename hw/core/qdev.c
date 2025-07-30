@@ -361,17 +361,17 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
 
 void qdev_standby_now(DeviceState *dev, Error **errp)
 {
-    StandbyHandler *handler;
+    PowerStateHandler *handler;
 
     /*
      * We are here because the OSPM has already issued the ACPI _EJx method
      * after receiving an Eject Request (Notify(..., 0x03)). This sequence
      * initiates a graceful eject of the device from the platform.
      */
-    handler = standby_get_handler(dev);
+    handler = powerstate_handler(dev);
     assert(handler);
 
-    standby_handler_enter(handler, dev, errp);
+    handle_poweroff(handler, dev, errp);
     if (*errp) {
         error_prepend(errp, "failed to put device %s into standby",
                       object_get_typename(OBJECT(dev)));
@@ -726,57 +726,54 @@ static bool device_get_hotplugged(Object *obj, Error **errp)
     return dev->hotplugged;
 }
 
-static bool device_get_standby(Object *obj, Error **errp)
+static bool device_get_poweredoff(Object *obj, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
-    return dev->standby;
+    return dev->powered_off;
 }
 
-static void
-device_set_standby(Object *obj, bool value, Error **errp)
+static void device_set_poweredoff(Object *obj, bool value, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
-    StandbyHandlerClass *sdc;
-    StandbyHandler *handler;
+    PowerStateHandlerClass *pshc;
+    PowerStateHandler *handler;
 
     warn_report("[%s] device-ID%s\n", __func__, dev->id);
 
-    if (!dc->can_standby) {
-        error_setg(errp, "Device '%s' does not support standby/resume",
+    if (!dc->can_power_off) {
+        error_setg(errp, "Device '%s' does not support power-{on,off}",
                    object_get_typename(obj));
         return;
     }
 
-    handler = standby_get_handler(dev);
+    handler = powerstate_handler(dev);
     assert(handler);
 
-    if (value && !dev->standby) {
-        /* device 'Standby' handling */
+    if (value && !dev->powered_off) {
+        /* device 'power-off' handling */
         if (!dev->realized) {
-            dev->standby = true;
+            dev->powered_off = true;
             return;
         }
 
-        sdc = STANDBY_HANDLER_GET_CLASS(handler);
+        pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
         /* check if device need to do this asynchronously */
-        if (sdc->request_standby && phase_check(PHASE_MACHINE_READY)) {
-            standby_handler_request(handler, dev, errp);
+        if (pshc->poweroff_request && phase_check(PHASE_MACHINE_READY)) {
+            handle_poweroff_request(handler, dev, errp);
         } else {
             qdev_standby_now(dev, errp);
         }
 
         if (*errp) {
-            error_prepend(errp, "Failed to enter standby for device '%s': ",
-                          dev->id);
+            error_prepend(errp, "Failed to power-off device '%s': ", dev->id);
             return;
         }
-    } else if (!value && dev->standby) {
-        /* device 'resumption' handling */
-        standby_handler_exit(handler, dev, errp);
+    } else if (!value && dev->powered_off) {
+        /* device 'power-on' handling */
+        handle_poweron(handler, dev, errp);
         if (*errp) {
-            error_prepend(errp, "Failed to exit standby for device '%s': ",
-                          dev->id);
+            error_prepend(errp, "Failed to power-on device '%s': ", dev->id);
             return;
         }
 
@@ -793,7 +790,7 @@ device_set_standby(Object *obj, bool value, Error **errp)
             }
         }
 
-        qatomic_store_release(&dev->standby, value);
+        qatomic_store_release(&dev->powered_off, value);
         smp_wmb();
     }
 }
@@ -809,7 +806,7 @@ static void device_initfn(Object *obj)
 
     dev->instance_id_alias = -1;
     dev->realized = false;
-    dev->standby = false;
+    dev->powered_off = false;
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);
@@ -931,8 +928,9 @@ static void device_class_init(ObjectClass *class, void *data)
                                    device_get_hotpluggable, NULL);
     object_class_property_add_bool(class, "hotplugged",
                                    device_get_hotplugged, NULL);
-    object_class_property_add_bool(class, "standby",
-                                   device_get_standby, device_set_standby);
+    object_class_property_add_bool(class, "powered-off",
+                                   device_get_poweredoff,
+                                   device_set_poweredoff);
     object_class_property_add_link(class, "parent_bus", TYPE_BUS,
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }

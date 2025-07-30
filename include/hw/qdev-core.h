@@ -8,7 +8,7 @@
 #include "qemu/rcu_queue.h"
 #include "qom/object.h"
 #include "hw/hotplug.h"
-#include "hw/standby.h"
+#include "hw/powerstate.h"
 #include "hw/resettable.h"
 
 /**
@@ -152,7 +152,7 @@ struct DeviceClass {
      */
     bool user_creatable;
     bool hotpluggable;
-    bool can_standby;
+    bool can_power_off;
 
     /* callbacks */
     /**
@@ -166,8 +166,6 @@ struct DeviceClass {
     DeviceReset legacy_reset;
     DeviceRealize realize;
     DeviceUnrealize unrealize;
-    DeviceStandby standby;
-    DeviceResume resume;
 
     /**
      * @vmsd: device state serialisation description for
@@ -238,7 +236,11 @@ struct DeviceState {
     /**
      * @standby: is device on standby?
      */
-    bool standby;
+    /* bool standby; */
+    /**
+     * @powered_off: is device powered-off but present?
+     */
+    bool powered_off;
     /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
