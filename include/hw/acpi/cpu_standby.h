@@ -20,46 +20,46 @@
 #include "hw/acpi/aml-build.h"
 #include "hw/boards.h"
 
-#define ACPI_CPU_STANDBY_REG_LEN 12
+#define ACPI_CPU_POWERSTATE_REG_LEN 12
 
-typedef struct AcpiCpuStandbyStatus {
+typedef struct AcpiCpuPowerStateStatus {
     CPUState *cpu;
     uint64_t arch_id;
     bool devchk_pending; /* device-check pending */
     bool ejrqst_pending; /* eject-request pending */
     uint32_t ost_event;
     uint32_t ost_status;
-} AcpiCpuStandbyStatus;
+} AcpiCpuPowerStateStatus;
 
-typedef struct CPUStandbyState {
+typedef struct CPUPowerState {
     MemoryRegion ctrl_reg;
     uint32_t selector;
     uint8_t command;
     uint32_t dev_count;
-    AcpiCpuStandbyStatus *devs;
-} CPUStandbyState;
+    AcpiCpuPowerStateStatus *devs;
+} CPUPowerState;
 
-void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUStandbyState *cpu_st,
+void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUPowerState *cpu_st,
                         DeviceState *dev, Error **errp);
 
 void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
-                                 CPUStandbyState *cpu_st, DeviceState *dev,
+                                 CPUPowerState *cpu_st, DeviceState *dev,
                                  Error **errp);
 
-void acpi_cpu_standby_cb(CPUStandbyState *cpu_st, DeviceState *dev,
+void acpi_cpu_standby_cb(CPUPowerState *cpu_st, DeviceState *dev,
                          Error **errp);
 
-void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
-                         CPUStandbyState *state, hwaddr base_addr);
+void cpu_powerstate_hw_init(MemoryRegion *as, Object *owner,
+                            CPUPowerState *state, hwaddr base_addr);
 
 void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
                             const char *event_handler_method);
 
-void acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st,
+void acpi_cpu_ospm_standby_status(CPUPowerState *cpu_st,
                                   ACPIOSTInfoList ***list);
 
 extern const VMStateDescription vmstate_cpu_standby;
 #define VMSTATE_CPU_STANDBY(cpusb, state) \
     VMSTATE_STRUCT(cpusb, state, 1, \
-                   vmstate_cpu_standby, CPUStandbyState)
+                   vmstate_cpu_standby, CPUPowerState)
 #endif

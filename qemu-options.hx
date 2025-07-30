@@ -280,11 +280,11 @@ SRST
 ERST
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
-    "-smp [[cpus=]n][,standbycpus=standbycpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
+    "-smp [[cpus=]n][,offlinecpus=offlinecpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
     "               [,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules]\n"
     "               [,cores=cores][,threads=threads]\n"
     "                set the number of initial CPUs to 'n' [default=1]\n"
-    "                standbycpus= additional number of present CPUs, but on standby mode(if supported)\n"
+    "                offlinecpus= additional number of present but powered-off CPUs\n"
     "                maxcpus= maximum number of total CPUs, including\n"
     "                offline CPUs for hotplug, etc\n"
     "                drawers= number of drawers on the machine board\n"
@@ -308,18 +308,18 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      can also be provided in addition to the sub-option, but their values\n"
     "      must be set as 1 in the purpose of correct parsing.\n"
     "                                                         \n"
-    "      Standby CPUs: Some machine types do not support vCPU hotplug but their \n"
-    "      CPUs can be put on standby mode and can be kept hidden from the Guest\n"
-    "      OS and later made *active* through administrative action from QMP/HMP\n"
-    "      monitor. This is like a CPU hotplug, just that all standby CPUs are known\n"
-    "      and *present* in advance at the boot time. Meant for ARM Architecture\n"
-    "      like machines which do not support hotplug of CPUs\n", QEMU_ARCH_ALL)
+    "      Offline CPUs: Some machine types do not support vCPU hotplug but their \n"
+    "      CPUs can be powered-off(offline) and kept hidden from the Guest OS.\n"
+    "      Later, CPUs can be powered-on through administrative action from QMP/HMP\n"
+    "      monitor. This is akin to CPU hotplug, but with a difference that\n"
+    "      all Offline CPUs are *present* at the boot time. Meant for Architectures\n"
+    "      like ARM machines which don't support hotplugging of CPUs\n", QEMU_ARCH_ALL)
 SRST
-``-smp [[cpus=]n][,standbycpus=standbycpus][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
+``-smp [[cpus=]n][,offlinecpus=offlinecpus][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
     Simulate a SMP system with '\ ``n``\ ' CPUs initially present & active on
-    the machine type board. Futhermore, on architectures that support Standby
-    CPUs, optional '\ ``standbycpus``\ 'parameter can be used to specify
-    *additional* present CPUs but which are on standby mode i.e. not active.
+    the machine type board. Futhermore, on architectures that support changing
+    the powerstate of CPUs, optional '\ ``offlinecpus``\ 'parameter specifies
+    *additional* present but powered-off CPUs (i.e. which are Offlined)
     This is different than CPU hotplug where additional CPUs are not present.
     On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
     can be set to enable further CPUs to be added at runtime. When both

@@ -20,7 +20,7 @@ enum {
 };
 
 static ACPIOSTInfo *
-acpi_cpu_device_standby_status(int idx, AcpiCpuStandbyStatus *cdev)
+acpi_cpu_device_standby_status(int idx, AcpiCpuPowerStateStatus *cdev)
 {
     ACPIOSTInfo *info = g_new0(ACPIOSTInfo, 1);
 
@@ -36,7 +36,7 @@ acpi_cpu_device_standby_status(int idx, AcpiCpuStandbyStatus *cdev)
 }
 
 void
-acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
+acpi_cpu_ospm_standby_status(CPUPowerState *cpu_st, ACPIOSTInfoList ***list)
 {
     ACPIOSTInfoList ***tail = list;
     int i;
@@ -50,8 +50,8 @@ acpi_cpu_ospm_standby_status(CPUStandbyState *cpu_st, ACPIOSTInfoList ***list)
 static uint64_t
 acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
-    CPUStandbyState *cpu_st = opaque;
-    AcpiCpuStandbyStatus *cdev;
+    CPUPowerState *cpu_st = opaque;
+    AcpiCpuPowerStateStatus *cdev;
     uint64_t val = 0;
 
     if (cpu_st->selector >= cpu_st->dev_count) {
@@ -87,8 +87,8 @@ static void
 acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
                                  unsigned int size)
 {
-    CPUStandbyState *cpu_st = opaque;
-    AcpiCpuStandbyStatus *cdev;
+    CPUPowerState *cpu_st = opaque;
+    AcpiCpuPowerStateStatus *cdev;
     ACPIOSTInfo *info;
 
     assert(cpu_st->dev_count);
@@ -186,8 +186,8 @@ static const MemoryRegionOps cpu_device_mr_ops = {
     },
 };
 
-void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
-                         CPUStandbyState *state, hwaddr base_addr)
+void cpu_powerstate_hw_init(MemoryRegion *as, Object *owner,
+                         CPUPowerState *state, hwaddr base_addr)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -203,11 +203,12 @@ void cpu_standby_hw_init(MemoryRegion *as, Object *owner,
         state->devs[i].arch_id = id_list->cpus[i].arch_id;
     }
     memory_region_init_io(&state->ctrl_reg, owner, &cpu_device_mr_ops, state,
-                          "acpi-cpu-standby", ACPI_CPU_STANDBY_REG_LEN);
+                          "acpi-cpu-powerstate", ACPI_CPU_POWERSTATE_REG_LEN);
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
 }
 
-static AcpiCpuStandbyStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState *dev)
+static AcpiCpuPowerStateStatus *
+get_cpu_status(CPUPowerState *cpu_st, DeviceState *dev)
 {
     CPUClass *k = CPU_GET_CLASS(dev);
     uint64_t cpu_arch_id = k->get_arch_id(CPU(dev));
@@ -221,10 +222,10 @@ static AcpiCpuStandbyStatus *get_cpu_status(CPUStandbyState *cpu_st, DeviceState
     return NULL;
 }
 
-void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUStandbyState *cpu_st,
+void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUPowerState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
-    AcpiCpuStandbyStatus *cdev;
+    AcpiCpuPowerStateStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -239,14 +240,14 @@ void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUStandbyState *cpu_st,
      * result in OSPM evaluating the ACPI _EVT method and scan of cpus
      */
     cdev->devchk_pending = true;
-    acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
+    acpi_send_event(DEVICE(handler), ACPI_CPU_POWERSTATE_STATUS);
 }
 
 void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
-                                 CPUStandbyState *cpu_st,
+                                 CPUPowerState *cpu_st,
                                  DeviceState *dev, Error **errp)
 {
-    AcpiCpuStandbyStatus *cdev;
+    AcpiCpuPowerStateStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -260,13 +261,13 @@ void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
      * 'eject-request' event pending for this cpu
      */
     cdev->ejrqst_pending = true;
-    acpi_send_event(DEVICE(handler), ACPI_CPU_STANDBY_STATUS);
+    acpi_send_event(DEVICE(handler), ACPI_CPU_POWERSTATE_STATUS);
 }
 
-void acpi_cpu_standby_cb(CPUStandbyState *cpu_st,
+void acpi_cpu_standby_cb(CPUPowerState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
-    AcpiCpuStandbyStatus *cdev;
+    AcpiCpuPowerStateStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -280,10 +281,10 @@ static const VMStateDescription vmstate_cpu_standby_sts = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_BOOL(devchk_pending, AcpiCpuStandbyStatus),
-        VMSTATE_BOOL(ejrqst_pending, AcpiCpuStandbyStatus),
-        VMSTATE_UINT32(ost_event, AcpiCpuStandbyStatus),
-        VMSTATE_UINT32(ost_status, AcpiCpuStandbyStatus),
+        VMSTATE_BOOL(devchk_pending, AcpiCpuPowerStateStatus),
+        VMSTATE_BOOL(ejrqst_pending, AcpiCpuPowerStateStatus),
+        VMSTATE_UINT32(ost_event, AcpiCpuPowerStateStatus),
+        VMSTATE_UINT32(ost_status, AcpiCpuPowerStateStatus),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -293,11 +294,11 @@ const VMStateDescription vmstate_cpu_standby = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_UINT32(selector, CPUStandbyState),
-        VMSTATE_UINT8(command, CPUStandbyState),
-        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, CPUStandbyState, dev_count,
+        VMSTATE_UINT32(selector, CPUPowerState),
+        VMSTATE_UINT8(command, CPUPowerState),
+        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, CPUPowerState, dev_count,
                                              vmstate_cpu_standby_sts,
-                                             AcpiCpuStandbyStatus),
+                                             AcpiCpuPowerStateStatus),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -355,7 +356,7 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         /* declare CPU standby MMIO region with related access fields */
         aml_append(cpu_ctrl_dev,
             aml_operation_region("PRST", AML_SYSTEM_MEMORY, aml_int(base_addr),
-                                 ACPI_CPU_STANDBY_REG_LEN));
+                                 ACPI_CPU_POWERSTATE_REG_LEN));
 
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK,
                           AML_WRITE_AS_ZEROS);

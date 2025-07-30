@@ -92,7 +92,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 #define AML_GED_EVT_REG "EREG"
 #define AML_GED_EVT_SEL "ESEL"
 #define AML_GED_EVT_CPUHP_SCAN_METHOD "\\_SB.GED.CSCN"
-#define AML_GED_EVT_CPUSB_SCAN_METHOD "\\_SB.GED.SSCN"
+#define AML_GED_EVT_CPUPS_SCAN_METHOD "\\_SB.GED.PSCN"  /* Power State Scan */
 
 /*
  * Platforms need to specify the GED event bitmap
@@ -102,7 +102,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 #define ACPI_GED_MEM_HOTPLUG_EVT     0x1
 #define ACPI_GED_PWR_DOWN_EVT        0x2
 #define ACPI_GED_NVDIMM_HOTPLUG_EVT  0x4
-#define ACPI_GED_CPU_STANDBY_EVT     0x8
+#define ACPI_GED_CPU_POWERSTATE_EVT  0x8
 #define ACPI_GED_CPU_HOTPLUG_EVT     0x10
 
 typedef struct GEDState {
@@ -117,8 +117,8 @@ struct AcpiGedState {
     MemoryRegion container_memhp;
     CPUHotplugState cpuhp_state;
     MemoryRegion container_cpuhp;
-    CPUStandbyState cpusb_state;
-    MemoryRegion container_cpusb;
+    CPUPowerState cpups_state;
+    MemoryRegion container_cpups;
     GEDState ged_state;
     uint32_t ged_event_bitmap;
     qemu_irq irq;

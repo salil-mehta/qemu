@@ -728,7 +728,7 @@ static QemuOptsList qemu_smp_opts = {
             .name = "cpus",
             .type = QEMU_OPT_NUMBER,
         }, {
-            .name = "standbycpus",
+            .name = "offlinecpus",
             .type = QEMU_OPT_NUMBER,
         }, {
             .name = "drawers",

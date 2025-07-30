@@ -290,7 +290,7 @@ struct MachineClass {
     bool rom_file_has_mr;
     int minimum_page_bits;
     bool has_hotpluggable_cpus;
-    bool has_standby_cpus;
+    bool has_power_manageable_cpus;
     bool ignore_memory_transaction_failures;
     int numa_mem_align_shift;
     const char * const *valid_cpu_types;
@@ -351,7 +351,7 @@ typedef struct DeviceMemoryState {
 /**
  * CpuTopology:
  * @cpus: the number of present logical processors on the machine
- * @standbycpus: the number additional present & standby cpus
+ * @offlinecpus: the number additional present but powered-off cpus
  * @drawers: the number of drawers on the machine
  * @books: the number of books in one drawer
  * @sockets: the number of sockets in one book
@@ -364,7 +364,7 @@ typedef struct DeviceMemoryState {
  */
 typedef struct CpuTopology {
     unsigned int cpus;
-    unsigned int standbycpus;
+    unsigned int offlinecpus;
     unsigned int drawers;
     unsigned int books;
     unsigned int sockets;

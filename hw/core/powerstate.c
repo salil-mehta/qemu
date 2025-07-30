@@ -11,7 +11,7 @@
  * (at your option) any later version.
  */
 #include "qemu/osdep.h"
-#include "hw/standby.h"
+#include "hw/powerstate.h"
 #include "qemu/module.h"
 #include "hw/boards.h"
 

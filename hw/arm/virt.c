@@ -187,7 +187,7 @@ static const MemMapEntry base_memmap[] = {
     [VIRT_NVDIMM_ACPI] =        { 0x09090000, NVDIMM_ACPI_IO_LEN},
     [VIRT_PVTIME] =             { 0x090a0000, 0x00010000 },
     [VIRT_SECURE_GPIO] =        { 0x090b0000, 0x00001000 },
-    [VIRT_CPUSB_ACPI] =         { 0x090c0000, ACPI_CPU_STANDBY_REG_LEN},
+    [VIRT_CPUPS_ACPI] =         { 0x090c0000, ACPI_CPU_POWERSTATE_REG_LEN},
     [VIRT_CPUHP_ACPI] =         { 0x090d0000, ACPI_CPU_HOTPLUG_REG_LEN},
     [VIRT_MMIO] =               { 0x0a000000, 0x00000200 },
     /* ...repeating for a total of NUM_VIRTIO_TRANSPORTS, each of that size */
@@ -686,7 +686,7 @@ static inline DeviceState *create_acpi_ged(VirtMachineState *vms)
     DeviceState *dev;
     MachineState *ms = MACHINE(vms);
     int irq = vms->irqmap[VIRT_ACPI_GED];
-    uint32_t event = ACPI_GED_PWR_DOWN_EVT | ACPI_GED_CPU_STANDBY_EVT |
+    uint32_t event = ACPI_GED_PWR_DOWN_EVT | ACPI_GED_CPU_POWERSTATE_EVT |
                      ACPI_GED_CPU_HOTPLUG_EVT;
 
     if (ms->ram_slots) {
@@ -1893,7 +1893,7 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
 }
 
 static void
-virt_cpu_resume(PowerStateHandler *handler, DeviceState *dev, Error **errp)
+virt_cpu_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
     PowerStateHandlerClass *pshc;
@@ -1915,24 +1915,25 @@ virt_cpu_resume(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     /* mark GICC accessible */
     gicv3_mark_gicc_accessible(OBJECT(vms->gic), cs->cpu_index, errp);
     if (*errp) {
-        error_setg(errp, "couldn't mark GICC accessibile for cpu %d",
+        error_setg(errp, "couldn't mark GICC accessibile for CPU %d",
                    cs->cpu_index);
         goto fail_accessible;
     }
 
     /*
-     * Notify the guest that a CPU is active (_STA.Ena = 1), triggering a Device
-     * Check (Notify(..., 0x80)) via GED. This prompts OSPM to re-evaluate _STA.
+     * Notify the guest that a CPU is powered-on(_STA.Ena = 1), triggering a
+     * Device Check (Notify(..., 0x80)) via GED. This prompts OSPM to
+     * re-evaluate ACPI _STA method.
      *
-     * Only notify after the VM is ready—i.e., the guest kernel is initialized.
+     * Only notify after the VM is ready i.e., the guest kernel is initialized.
      * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
      * so sending a notification is pointless.
      */
     if (phase_check(PHASE_MACHINE_READY)) {
         pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
-        pshc->exit_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+        pshc->poweron(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
         if (*errp) {
-            error_setg(errp, "failed to request standby mode for cpu %d",
+            error_setg(errp, "failed to power-on CPU %d",
                        cs->cpu_index);
             goto fail_resume;
         }
@@ -1956,14 +1957,14 @@ fail_resume:
         error_free(rollback_err);
     }
 fail_accessible:
-    /* put KVM vCPU to sleep but keep it realized in Qemu */
+    /* power-off KVM vCPU but now keep it realized in Qemu */
     ret = arm_set_cpu_off(arm_cpu_mp_affinity(ARM_CPU(cs)));
     assert(ret == QEMU_ARM_POWERCTL_RET_SUCCESS ||
            ret == QEMU_ARM_POWERCTL_IS_OFF);
 }
 
 static void
-virt_cpu_request_standby(PowerStateHandler *handler, DeviceState *dev,
+virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
                         Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
@@ -1974,21 +1975,20 @@ virt_cpu_request_standby(PowerStateHandler *handler, DeviceState *dev,
     warn_report("[%s] cpu%d\n", __func__, cs->cpu_index);
 
     if (cs->cpu_index == first_cpu->cpu_index) {
-        error_setg(errp, "Cannot put boot CPU (id=%d [%d:%d:%d:%d]) on standby",
+        error_setg(errp, "can't power-off  boot CPU (id=%d [%d:%d:%d:%d])",
                    first_cpu->cpu_index, cpu->socket_id, cpu->cluster_id,
                    cpu->core_id, cpu->thread_id);
         return;
     }
 
     /*
-     * Putting a CPU into standby triggers an Eject Request (Notify(..., 0x03))
+     * powering-off a CPU triggers an Eject Request (Notify(..., 0x03))
      * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
      */
     pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
-    pshc->request_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+    pshc->request_poweroff(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
     if (*errp) {
-        error_setg(errp, "failed to request standby mode for cpu %d",
-                   cs->cpu_index);
+        error_setg(errp, "request failed to power-off CPU %d", cs->cpu_index);
         return;
     }
 
@@ -1996,7 +1996,7 @@ virt_cpu_request_standby(PowerStateHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_cpu_enter_standby(PowerStateHandler *handler, DeviceState *dev,
+virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev,
                        Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
@@ -2007,16 +2007,15 @@ virt_cpu_enter_standby(PowerStateHandler *handler, DeviceState *dev,
     warn_report("[%s] cpu%d Enter\n", __func__, cs->cpu_index);
 
     /*
-     * Only notify after the VM is ready—i.e., the guest kernel is initialized.
+     * Only notify after the VM is ready i.e., the guest kernel is initialized.
      * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
      * so sending a notification is pointless.
      */
     if (phase_check(PHASE_MACHINE_READY)) {
         pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
-        pshc->enter_standby(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+        pshc->poweroff(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
         if (*errp) {
-            error_setg(errp, "failed to enter cpu %d in standby mode",
-                       cs->cpu_index);
+            error_setg(errp, "failed to power-off CPU %d", cs->cpu_index);
             return;
         }
     }
@@ -2028,8 +2027,8 @@ virt_cpu_enter_standby(PowerStateHandler *handler, DeviceState *dev,
     }
 
     /*
-     * Ensure the vCPU is no longer scheduled while in standby;
-     * this puts the KVM vCPU to sleep.
+     * Ensure the vCPU is no longer scheduled while it is powered-off;
+     * this power-offs the KVM vCPU which means sleeping in KVM.
      */
     ret = arm_set_cpu_off(arm_cpu_mp_affinity(ARM_CPU(cs)));
     assert(ret == QEMU_ARM_POWERCTL_RET_SUCCESS ||
@@ -2038,7 +2037,7 @@ virt_cpu_enter_standby(PowerStateHandler *handler, DeviceState *dev,
     /* mark GICC inaccessible */
     gicv3_mark_gicc_inaccessible(OBJECT(vms->gic), cs->cpu_index, errp);
     if (*errp) {
-        error_setg(errp, "couldn't mark GICC accessibile for cpu %d",
+        error_setg(errp, "couldn't mark GICC inaccessibile for CPU %d",
                    cs->cpu_index);
         return;
     }
@@ -2576,17 +2575,17 @@ static void machvirt_init(MachineState *machine)
     }
 
     /* salil: revisit again */
-    if (mc->has_standby_cpus) {
-        max_cpus = smp_cpus + machine->smp.standbycpus;
+    if (mc->has_power_manageable_cpus) {
+        max_cpus = smp_cpus + machine->smp.offlinecpus;
         machine->smp.max_cpus = max_cpus;
     }
     if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
         qtest_enabled() || (vms->gic_version < VIRT_GIC_VERSION_3)) {
         max_cpus = machine->smp.max_cpus = smp_cpus;
         mc->has_hotpluggable_cpus = false; /* salil: remove */
-        mc->has_standby_cpus = false;
+        mc->has_power_manageable_cpus = false;
         if (vms->gic_version >= VIRT_GIC_VERSION_3) {
-            warn_report("cpu standby feature has been disabled");
+            warn_report("CPU Power State feature has been disabled");
         }
     }
 
@@ -2713,16 +2712,16 @@ static void machvirt_init(MachineState *machine)
             qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
             object_unref(cpuobj);
         } else {
-            /* present and standby vCPUs */
+            /* present and offline vCPUs */
 
             /*
              * [!] Constraint: The ARM CPU architecture does not permit new CPUs
              * to be added after system initialization.
              *
              * Workaround: Pre-create KVM vCPUs even for those that are not yet
-             * active i.e. on standby, keeping them `parked` and in an
+             * online i.e. powered-off, keeping them `parked` and in an
              * `unrealized (at-least during boot time)` state within QEMU until
-             * they are made active.
+             * they are powered-on and made online.
              */
             if (kvm_enabled()) {
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
@@ -3638,38 +3637,39 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
 }
 
 static void
-virt_machine_device_request_standby(PowerStateHandler *handler, DeviceState *dev,
-                                   Error **errp)
+virt_machine_device_request_poweroff(PowerStateHandler *handler,
+                                     DeviceState *dev,
+                                     Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_request_standby(handler, dev, errp);
+        virt_cpu_request_poweroff(handler, dev, errp);
     } else {
-        error_setg(errp, "virt: device standby request for unsupported device"
+        error_setg(errp, "device power-off request for unsupported device"
                    "type: %s", object_get_typename(OBJECT(dev)));
     }
 }
 
 static void
-virt_machine_device_enter_standby(PowerStateHandler *handler, DeviceState *dev,
-                                   Error **errp)
+virt_machine_device_poweroff(PowerStateHandler *handler, DeviceState *dev,
+                             Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_enter_standby(handler, dev, errp);
+        virt_cpu_poweroff(handler, dev, errp);
     } else {
-        error_setg(errp, "virt: device standby for unsupported device"
-                   "type: %s", object_get_typename(OBJECT(dev)));
+        error_setg(errp, "can't power-off unsupported device type %s",
+                   object_get_typename(OBJECT(dev)));
     }
 }
 
 static void
-virt_machine_device_resume(PowerStateHandler *handler, DeviceState *dev,
-                                   Error **errp)
+virt_machine_device_poweron(PowerStateHandler *handler, DeviceState *dev,
+                            Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_resume(handler, dev, errp);
+        virt_cpu_poweron(handler, dev, errp);
     } else {
-        error_setg(errp, "virt: device resume request for unsupported device"
-                   "type: %s", object_get_typename(OBJECT(dev)));
+        error_setg(errp, "can't power-on unsupported device type %s"
+                   object_get_typename(OBJECT(dev)));
     }
 }
 
@@ -3759,7 +3759,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
-    PowerStateHandlerClass *pshc = STANDBY_HANDLER_CLASS(oc);
+    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_CLASS(oc);
     static const char * const valid_cpu_types[] = {
 #ifdef CONFIG_TCG
         ARM_CPU_TYPE_NAME("cortex-a7"),
@@ -3823,12 +3823,15 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     hc->plug = virt_machine_device_plug_cb;
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
-    mc->has_standby_cpus = true;
+
+    /* virt machine device powerstate handlers & callbacks */
     assert(!mc->get_powerstate_handler);
+    mc->has_power_manageable_cpus = true;
     mc->get_powerstate_handler = virt_machine_powerstate_handler;
-    pshc->request_standby = virt_machine_device_request_standby;
-    pshc->enter_standby = virt_machine_device_enter_standby;
-    pshc->exit_standby = virt_machine_device_resume;
+    pshc->request_poweroff = virt_machine_device_request_poweroff;
+    pshc->poweroff = virt_machine_device_poweroff;
+    pshc->poweron = virt_machine_device_poweron;
+
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
     mc->auto_enable_numa_with_memhp = true;
