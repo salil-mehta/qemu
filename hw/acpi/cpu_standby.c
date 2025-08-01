@@ -7,10 +7,10 @@
 #include "sysemu/numa.h"
 #include "hw/acpi/cpu_standby.h"
 
-#define ACPI_CPU_SELECTOR_OFFSET_WR 0
-#define ACPI_CPU_FLAGS_OFFSET_RW 4
-#define ACPI_CPU_CMD_OFFSET_WR 5
-#define ACPI_CPU_CMD_DATA_OFFSET_RW 8
+#define ACPI_CPU_SELECTOR_OFFSET_WO 0  /* write-only */
+#define ACPI_CPU_FLAGS_OFFSET_RW 4     /* read-write */
+#define ACPI_CPU_CMD_OFFSET_WO 5       /* write-only */
+#define ACPI_CPU_CMD_DATA_OFFSET_RW 8  /* read-write */
 
 enum {
     ACPI_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
@@ -20,7 +20,7 @@ enum {
 };
 
 static ACPIOSTInfo *
-acpi_cpu_device_standby_status(int idx, AcpiCpuPowerStateStatus *cdev)
+acpi_cpu_ospm_ost_status(int idx, AcpiCpuOspmStateStatus *cdev)
 {
     ACPIOSTInfo *info = g_new0(ACPIOSTInfo, 1);
 
@@ -35,23 +35,21 @@ acpi_cpu_device_standby_status(int idx, AcpiCpuPowerStateStatus *cdev)
     return info;
 }
 
-void
-acpi_cpu_ospm_standby_status(CPUPowerState *cpu_st, ACPIOSTInfoList ***list)
+void acpi_cpus_ospm_status( *cpu_st, ACPIOSTInfoList ***list)
 {
     ACPIOSTInfoList ***tail = list;
     int i;
 
     for (i = 0; i < cpu_st->dev_count; i++) {
-        QAPI_LIST_APPEND(*tail,
-                         acpi_cpu_device_standby_status(i, &cpu_st->devs[i]));
+        QAPI_LIST_APPEND(*tail, acpi_cpu_ospm_ost_status(i, &cpu_st->devs[i]));
     }
 }
 
 static uint64_t
-acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
+acpi_cpu_common_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
-    CPUPowerState *cpu_st = opaque;
-    AcpiCpuPowerStateStatus *cdev;
+    AcpiCpuOspmStateIntf *cpu_st = opaque;
+    AcpiCpuOspmStateStatus *cdev;
     uint64_t val = 0;
 
     if (cpu_st->selector >= cpu_st->dev_count) {
@@ -65,7 +63,7 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
         val |= cdev->devchk_pending ? 2 : 0;
         val |= cdev->ejrqst_pending  ? 4 : 0;
         val |= cdev->cpu ? 32 : 0;
-        trace_cpusb_acpi_read_flags(cpu_st->selector, val);
+        trace_acpi_cpuos_if_read_flags(cpu_st->selector, val);
         break;
     case ACPI_CPU_CMD_DATA_OFFSET_RW:
         switch (cpu_st->command) {
@@ -75,7 +73,7 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
         default:
            break;
         }
-        trace_cpusb_acpi_read_cmd_data(cpu_st->selector, val);
+        trace_acpi_cpuos_if_read_cmd_data(cpu_st->selector, val);
         break;
     default:
         break;
@@ -83,54 +81,53 @@ acpi_cpu_device_mr_read(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
-static void
-acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
-                                 unsigned int size)
+static void acpi_cpu_common_mr_write(void *opaque, hwaddr addr, uint64_t data,
+                                     unsigned int size)
 {
-    CPUPowerState *cpu_st = opaque;
-    AcpiCpuPowerStateStatus *cdev;
+    AcpiCpuOspmStateIntf *cpu_st = opaque;
+    AcpiCpuOspmStateStatus *cdev;
     ACPIOSTInfo *info;
 
     assert(cpu_st->dev_count);
 
     if (addr) {
         if (cpu_st->selector >= cpu_st->dev_count) {
-            trace_cpusb_acpi_invalid_idx_selected(cpu_st->selector);
+            trace_acpi_cpuos_if_invalid_idx_selected(cpu_st->selector);
             return;
         }
     }
 
     switch (addr) {
-    case ACPI_CPU_SELECTOR_OFFSET_WR: /* current CPU selector */
+    case ACPI_CPU_SELECTOR_OFFSET_WO: /* current CPU selector */
         cpu_st->selector = data;
-        trace_cpusb_acpi_write_idx(cpu_st->selector);
+        trace_acpi_cpuos_if_write_idx(cpu_st->selector);
         break;
     case ACPI_CPU_FLAGS_OFFSET_RW: /* set is_* fields  */
         cdev = &cpu_st->devs[cpu_st->selector];
         if (data & 2) { /* clear device-check pending event */
             cdev->devchk_pending = false;
-            trace_cpusb_acpi_clear_devchk_evt(cpu_st->selector);
+            trace_acpi_cpuos_if_clear_devchk_evt(cpu_st->selector);
         } else if (data & 4) { /* clear eject-request pending event */
             cdev->ejrqst_pending = false;
-            trace_cpusb_acpi_clear_ejrqst_evt(cpu_st->selector);
+            trace_acpi_cpuos_if_clear_ejrqst_evt(cpu_st->selector);
         } else if (data & 8) {
             DeviceState *dev = NULL;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
-                trace_cpusb_acpi_ejecting_invalid_cpu(cpu_st->selector);
+                trace_acpi_cpuos_if_ejecting_invalid_cpu(cpu_st->selector);
                 break;
             }
             /*
              * OSPM has returned with eject. Hence, it is now safe to put the
-             * cpu device on standby
+             * cpu device on powered-off state
              */
-            trace_cpusb_acpi_ejecting_cpu(cpu_st->selector);
+            trace_acpi_cpuos_if_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
             qdev_standby_now(dev, &error_fatal);
         }
         break;
-    case ACPI_CPU_CMD_OFFSET_WR:
-        trace_cpusb_acpi_write_cmd(cpu_st->selector, data);
+    case ACPI_CPU_CMD_OFFSET_WO:
+        trace_acpi_cpuos_if_write_cmd(cpu_st->selector, data);
         if (data < ACPI_CMD_MAX) {
             cpu_st->command = data;
             if (cpu_st->command == ACPI_GET_NEXT_CPU_WITH_EVENT_CMD) {
@@ -140,7 +137,7 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
                     cdev = &cpu_st->devs[iter];
                     if (cdev->devchk_pending || cdev->ejrqst_pending) {
                         cpu_st->selector = iter;
-                        trace_cpusb_acpi_cpu_has_events(cpu_st->selector,
+                        trace_acpi_cpuos_if_cpu_has_events(cpu_st->selector,
                             cdev->devchk_pending, cdev->ejrqst_pending);
                         break;
                     }
@@ -154,16 +151,16 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
         case ACPI_OST_EVENT_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_event = data;
-           trace_cpusb_acpi_write_ost_ev(cpu_st->selector, cdev->ost_event);
+           trace_acpi_cpuos_if_write_ost_ev(cpu_st->selector, cdev->ost_event);
            break;
         }
         case ACPI_OST_STATUS_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_status = data;
-           info = acpi_cpu_device_standby_status(cpu_st->selector, cdev);
+           info = acpi_cpu_ospm_ost_status(cpu_st->selector, cdev);
            qapi_event_send_acpi_device_ost(info);
            qapi_free_ACPIOSTInfo(info);
-           trace_cpusb_acpi_write_ost_status(cpu_st->selector,
+           trace_acpi_cpuos_if_write_ost_status(cpu_st->selector,
                                              cdev->ost_status);
            break;
         }
@@ -176,9 +173,9 @@ acpi_cpu_device_mr_write(void *opaque, hwaddr addr, uint64_t data,
     }
 }
 
-static const MemoryRegionOps cpu_device_mr_ops = {
-    .read = acpi_cpu_device_mr_read,
-    .write = acpi_cpu_device_mr_write,
+static const MemoryRegionOps cpu_common_mr_ops = {
+    .read = acpi_cpu_common_mr_read,
+    .write = acpi_cpu_common_mr_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -186,8 +183,8 @@ static const MemoryRegionOps cpu_device_mr_ops = {
     },
 };
 
-void cpu_powerstate_hw_init(MemoryRegion *as, Object *owner,
-                         CPUPowerState *state, hwaddr base_addr)
+void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
+                           AcpiCpuOspmStateIntf *state, hwaddr base_addr)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -202,13 +199,14 @@ void cpu_powerstate_hw_init(MemoryRegion *as, Object *owner,
         state->devs[i].cpu =  CPU(id_list->cpus[i].cpu);
         state->devs[i].arch_id = id_list->cpus[i].arch_id;
     }
-    memory_region_init_io(&state->ctrl_reg, owner, &cpu_device_mr_ops, state,
-                          "acpi-cpu-powerstate", ACPI_CPU_POWERSTATE_REG_LEN);
+    memory_region_init_io(&state->ctrl_reg, owner, &cpu_common_mr_ops, state,
+                          "acpi-cpu-ospm-state-intf-memory-region",
+                          ACPI_CPU_OSPM_IF_REG_LEN);
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
 }
 
-static AcpiCpuPowerStateStatus *
-get_cpu_status(CPUPowerState *cpu_st, DeviceState *dev)
+static AcpiCpuOspmStateStatus *
+acpi_get_cpu_status(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev)
 {
     CPUClass *k = CPU_GET_CLASS(dev);
     uint64_t cpu_arch_id = k->get_arch_id(CPU(dev));
@@ -222,12 +220,12 @@ get_cpu_status(CPUPowerState *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUPowerState *cpu_st,
-                        DeviceState *dev, Error **errp)
+void acpi_cpu_device_check_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
+                              Error **errp)
 {
-    AcpiCpuPowerStateStatus *cdev;
+    AcpiCpuOspmStateStatus *cdev;
 
-    cdev = get_cpu_status(cpu_st, dev);
+    cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
     }
@@ -235,21 +233,20 @@ void acpi_cpu_resume_cb(PowerStateHandler *handler, CPUPowerState *cpu_st,
     assert(cdev->cpu);
 
     /*
-     * Tell OSPM via GED that a standby cpu is being resumed. Also, mark
+     * Tell OSPM via GED that a powered-off cpu is being powered-on. Also, mark
      * 'device-check' event pending for this cpu. This will eventually
      * result in OSPM evaluating the ACPI _EVT method and scan of cpus
      */
     cdev->devchk_pending = true;
-    acpi_send_event(DEVICE(handler), ACPI_CPU_POWERSTATE_STATUS);
+    acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
 }
 
-void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
-                                 CPUPowerState *cpu_st,
-                                 DeviceState *dev, Error **errp)
+void acpi_cpu_eject_request_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
+                               Error **errp)
 {
-    AcpiCpuPowerStateStatus *cdev;
+    AcpiCpuOspmStateStatus *cdev;
 
-    cdev = get_cpu_status(cpu_st, dev);
+    cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
     }
@@ -261,44 +258,45 @@ void acpi_cpu_request_standby_cb(PowerStateHandler *handler,
      * 'eject-request' event pending for this cpu
      */
     cdev->ejrqst_pending = true;
-    acpi_send_event(DEVICE(handler), ACPI_CPU_POWERSTATE_STATUS);
+    acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
 }
 
-void acpi_cpu_standby_cb(CPUPowerState *cpu_st,
-                        DeviceState *dev, Error **errp)
+void
+acpi_cpu_eject_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev, Error **errp)
 {
-    AcpiCpuPowerStateStatus *cdev;
+    AcpiCpuOspmStateStatus *cdev;
 
-    cdev = get_cpu_status(cpu_st, dev);
+    cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
     }
     /* TODO: possible handling here */
 }
 
-static const VMStateDescription vmstate_cpu_standby_sts = {
-    .name = "CPU standby status",
+static const VMStateDescription vmstate_cpu_ospm_state_sts = {
+    .name = "CPU state notify status",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_BOOL(devchk_pending, AcpiCpuPowerStateStatus),
-        VMSTATE_BOOL(ejrqst_pending, AcpiCpuPowerStateStatus),
-        VMSTATE_UINT32(ost_event, AcpiCpuPowerStateStatus),
-        VMSTATE_UINT32(ost_status, AcpiCpuPowerStateStatus),
+        VMSTATE_BOOL(devchk_pending, AcpiCpuOspmStateStatus),
+        VMSTATE_BOOL(ejrqst_pending, AcpiCpuOspmStateStatus),
+        VMSTATE_UINT32(ost_event, AcpiCpuOspmStateStatus),
+        VMSTATE_UINT32(ost_status, AcpiCpuOspmStateStatus),
         VMSTATE_END_OF_LIST()
     }
 };
 
-const VMStateDescription vmstate_cpu_standby = {
-    .name = "CPU standby state",
+const VMStateDescription vmstate_cpu_powerstate = {
+    .name = "CPU power state",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_UINT32(selector, CPUPowerState),
-        VMSTATE_UINT8(command, CPUPowerState),
-        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, CPUPowerState, dev_count,
-                                             vmstate_cpu_standby_sts,
-                                             AcpiCpuPowerStateStatus),
+        VMSTATE_UINT32(selector, AcpiCpuOspmStateIntf),
+        VMSTATE_UINT8(command, AcpiCpuOspmStateIntf),
+        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, AcpiCpuOspmStateIntf,
+                                             dev_count,
+                                             vmstate_cpu_ospm_state_sts,
+                                             AcpiCpuOspmStateStatus),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -321,8 +319,8 @@ const VMStateDescription vmstate_cpu_standby = {
 #define CPU_EJECTRQ_EVENT "CEJR"
 #define CPU_EJECT_EVENT   "CEJ0"
 
-void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
-                            const char *event_handler_method)
+void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
+                         const char *event_handler_method)
 {
     Aml *ifctx;
     Aml *field;
@@ -335,9 +333,9 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
     const CPUArchIdList *arch_ids = mc->possible_cpu_arch_ids(machine);
-    char *cphp_res_path = g_strdup_printf("%s." CPUSB_RES_DEVICE, res_root);
+    char *res_path = g_strdup_printf("%s." CPUSB_RES_DEVICE, res_root);
 
-    cpu_ctrl_dev = aml_device("%s", cphp_res_path);
+    cpu_ctrl_dev = aml_device("%s", res_path);
     {
         Aml *crs;
 
@@ -356,7 +354,7 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
         /* declare CPU standby MMIO region with related access fields */
         aml_append(cpu_ctrl_dev,
             aml_operation_region("PRST", AML_SYSTEM_MEMORY, aml_int(base_addr),
-                                 ACPI_CPU_POWERSTATE_REG_LEN));
+                                 ACPI_CPU_OSPM_IF_REG_LEN));
 
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK,
                           AML_WRITE_AS_ZEROS);
@@ -386,14 +384,14 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
     cpus_dev = aml_device("\\_SB.CPUS");
     {
         int i;
-        Aml *ctrl_lock = aml_name("%s.%s", cphp_res_path, CPU_LOCK);
-        Aml *cpu_selector = aml_name("%s.%s", cphp_res_path, CPU_SELECTOR);
-        Aml *is_enabled = aml_name("%s.%s", cphp_res_path, CPU_ENABLED);
-        Aml *cpu_cmd = aml_name("%s.%s", cphp_res_path, CPU_COMMAND);
-        Aml *cpu_data = aml_name("%s.%s", cphp_res_path, CPU_DATA);
-        Aml *dvchk_evt = aml_name("%s.%s", cphp_res_path, CPU_DEVCHK_EVENT);
-        Aml *ejrq_evt = aml_name("%s.%s", cphp_res_path, CPU_EJECTRQ_EVENT);
-        Aml *ej_evt = aml_name("%s.%s", cphp_res_path, CPU_EJECT_EVENT);
+        Aml *ctrl_lock = aml_name("%s.%s", res_path, CPU_LOCK);
+        Aml *cpu_selector = aml_name("%s.%s", res_path, CPU_SELECTOR);
+        Aml *is_enabled = aml_name("%s.%s", res_path, CPU_ENABLED);
+        Aml *cpu_cmd = aml_name("%s.%s", res_path, CPU_COMMAND);
+        Aml *cpu_data = aml_name("%s.%s", res_path, CPU_DATA);
+        Aml *dvchk_evt = aml_name("%s.%s", res_path, CPU_DEVCHK_EVENT);
+        Aml *ejrq_evt = aml_name("%s.%s", res_path, CPU_EJECTRQ_EVENT);
+        Aml *ej_evt = aml_name("%s.%s", res_path, CPU_EJECT_EVENT);
 
         aml_append(cpus_dev, aml_name_decl("_HID", aml_string("ACPI0010")));
         aml_append(cpus_dev, aml_name_decl("_CID", aml_eisaid("PNP0A05")));
@@ -572,5 +570,5 @@ void build_cpus_standby_aml(Aml *table, hwaddr base_addr, const char *res_root,
     aml_append(method, aml_call0("\\_SB.CPUS." CPU_SCAN_METHOD));
     aml_append(table, method);
 
-    g_free(cphp_res_path);
+    g_free(res_path);
 }

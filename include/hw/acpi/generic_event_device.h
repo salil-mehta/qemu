@@ -117,7 +117,7 @@ struct AcpiGedState {
     MemoryRegion container_memhp;
     CPUHotplugState cpuhp_state;
     MemoryRegion container_cpuhp;
-    CPUPowerState cpups_state;
+    AcpiCPUStateContext cpups_state;
     MemoryRegion container_cpups;
     GEDState ged_state;
     uint32_t ged_event_bitmap;

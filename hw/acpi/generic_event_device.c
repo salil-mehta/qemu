@@ -288,9 +288,9 @@ acpi_ged_poweron_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_resume_cb(handler, &s->cpups_state, dev, errp);
+        acpi_cpu_device_check_cb(&s->cpups_state, dev, errp);
     } else {
-        error_setg(errp, "virt: can't power-on unsupported device type %s",
+        error_setg(errp, "acpi: can't power-on unsupported device type %s",
                    object_get_typename(OBJECT(dev)));
     }
 }
@@ -302,7 +302,7 @@ acpi_ged_request_poweroff_cb(PowerStateHandler *handler, DeviceState *dev,
     AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_request_standby_cb(handler, &s->cpups_state, dev, errp);
+        acpi_cpu_eject_request_cb(&s->cpups_state, dev, errp);
     } else {
         error_setg(errp, "acpi: power-off request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -315,7 +315,7 @@ acpi_ged_poweroff_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     AcpiGedState *s = ACPI_GED(handler);
 
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_standby_cb(&s->cpups_state, dev, errp);
+        acpi_cpu_eject_cb(&s->cpups_state, dev, errp);
     } else {
         error_setg(errp, "acpi: can't power-off unsupported device type %s",
                    object_get_typename(OBJECT(dev)));
@@ -328,7 +328,7 @@ static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 
     acpi_memory_ospm_status(&s->memhp_state, list);
     acpi_cpu_ospm_status(&s->cpuhp_state, list);
-    acpi_cpu_ospm_standby_status(&s->cpups_state, list);
+    acpi_cpus_ospm_status(&s->cpups_state, list);
 }
 
 static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
@@ -483,11 +483,11 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
         case ACPI_GED_CPU_POWERSTATE_EVT:
             /* initialize CPU Power State related regions */
             memory_region_init(&s->container_cpups, OBJECT(dev),
-                                "cpups container",
-                                ACPI_CPU_POWERSTATE_REG_LEN);
+                                "cpu ospm interface container",
+                                ACPI_CPU_OSPM_IF_REG_LEN);
             sysbus_init_mmio(sbd, &s->container_cpups);
-            cpu_powerstate_hw_init(&s->container_cpups, OBJECT(dev),
-                                   &s->cpups_state, 0);
+            acpi_cpu_ospm_state_interface_init(&s->container_cpups, OBJECT(dev),
+                                               &s->cpups_state, 0);
             break;
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */

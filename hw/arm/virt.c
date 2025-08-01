@@ -187,7 +187,7 @@ static const MemMapEntry base_memmap[] = {
     [VIRT_NVDIMM_ACPI] =        { 0x09090000, NVDIMM_ACPI_IO_LEN},
     [VIRT_PVTIME] =             { 0x090a0000, 0x00010000 },
     [VIRT_SECURE_GPIO] =        { 0x090b0000, 0x00001000 },
-    [VIRT_CPUPS_ACPI] =         { 0x090c0000, ACPI_CPU_POWERSTATE_REG_LEN},
+    [VIRT_CPUPS_ACPI] =         { 0x090c0000, ACPI_CPU_OSPM_IF_REG_LEN},
     [VIRT_CPUHP_ACPI] =         { 0x090d0000, ACPI_CPU_HOTPLUG_REG_LEN},
     [VIRT_MMIO] =               { 0x0a000000, 0x00000200 },
     /* ...repeating for a total of NUM_VIRTIO_TRANSPORTS, each of that size */
