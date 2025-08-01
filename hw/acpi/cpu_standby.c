@@ -7,10 +7,24 @@
 #include "sysemu/numa.h"
 #include "hw/acpi/cpu_standby.h"
 
-#define ACPI_CPU_SELECTOR_OFFSET_WO 0  /* write-only */
-#define ACPI_CPU_FLAGS_OFFSET_RW 4     /* read-write */
-#define ACPI_CPU_CMD_OFFSET_WO 5       /* write-only */
-#define ACPI_CPU_CMD_DATA_OFFSET_RW 8  /* read-write */
+/* 'Size' (in bytes) of all fields of MMIO Region*/
+#define ACPI_CPU_SELECTOR_FIELD_SIZE 4 /* write-only (Dword Access) */
+#define ACPI_CPU_FLAGS_FIELD_SIZE 1 /* read-write (Byte Access) */
+#define ACPI_CPU_RES_FLAG_FIELD_SIZE 3 /* Reserved */
+#define ACPI_CPU_CMD_FIELD_SIZE 1 /* write-only (Byte Access) */
+#define ACPI_CPU_RES_CMD_FIELD_SIZE 3 /* Reserved */
+#define ACPI_CPU_CMD_DATA_FIELD_SIZE 8 /* read-write (Qword Access) */
+
+/* 'Offsets' (in bytes) of the fields within the MMIO region */
+#define ACPI_CPU_SELECTOR_OFFSET_WO 0
+#define ACPI_CPU_FLAGS_OFFSET_RW (ACPI_CPU_SELECTOR_OFFSET_WO + \
+                                  ACPI_CPU_SELECTOR_FIELD_SIZE)
+#define ACPI_CPU_CMD_OFFSET_WO (ACPI_CPU_FLAGS_OFFSET_RW + \
+                                ACPI_CPU_FLAGS_FIELD_SIZE + \
+                                ACPI_CPU_RES_FLAG_FIELD_SIZE)
+#define ACPI_CPU_CMD_DATA_OFFSET_RW (ACPI_CPU_CMD_OFFSET_WO + \
+                                     ACPI_CPU_CMD_FIELD_SIZE +\
+                                     ACPI_CPU_RES_CMD_FIELD_SIZE)
 
 enum {
     ACPI_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
@@ -184,7 +198,8 @@ static const MemoryRegionOps cpu_common_mr_ops = {
 };
 
 void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
-                           AcpiCpuOspmStateIntf *state, hwaddr base_addr)
+                                        AcpiCpuOspmStateIntf *state,
+                                        hwaddr base_addr)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -254,8 +269,8 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
     assert(cdev->cpu);
 
     /*
-     * Tell OSPM via GED that a cpu wants to go on standby. Also, mark
-     * 'eject-request' event pending for this cpu
+     * Tell OSPM via GED that a cpu wants to power-off or go on standy. Also,
+     * mark 'eject-request' event pending for this cpu. (graceful shutdown)
      */
     cdev->ejrqst_pending = true;
     acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
@@ -274,7 +289,7 @@ acpi_cpu_eject_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev, Error **errp)
 }
 
 static const VMStateDescription vmstate_cpu_ospm_state_sts = {
-    .name = "CPU state notify status",
+    .name = "CPU OSPM state status",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
@@ -287,7 +302,7 @@ static const VMStateDescription vmstate_cpu_ospm_state_sts = {
 };
 
 const VMStateDescription vmstate_cpu_powerstate = {
-    .name = "CPU power state",
+    .name = "CPU OSPM state interface status",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
@@ -342,7 +357,7 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         aml_append(cpu_ctrl_dev,
             aml_name_decl("_HID", aml_eisaid("PNP0A06")));
         aml_append(cpu_ctrl_dev,
-            aml_name_decl("_UID", aml_string("CPU Standby resources")));
+            aml_name_decl("_UID", aml_string("CPU OSPM Interface resources")));
         aml_append(cpu_ctrl_dev, aml_mutex(CPU_LOCK, 0));
 
         crs = aml_resource_template();
@@ -351,26 +366,33 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
         aml_append(cpu_ctrl_dev, aml_name_decl("_CRS", crs));
 
-        /* declare CPU standby MMIO region with related access fields */
+        /* declare CPU OSPM Interface MMIO region related access fields */
         aml_append(cpu_ctrl_dev,
             aml_operation_region("PRST", AML_SYSTEM_MEMORY, aml_int(base_addr),
                                  ACPI_CPU_OSPM_IF_REG_LEN));
-
-        field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK,
-                          AML_WRITE_AS_ZEROS);
-        aml_append(field, aml_reserved_field(ACPI_CPU_FLAGS_OFFSET_RW * 8));
-        /* 1 if enabled, read only */
+        /* all byte accessible  fields */
+        field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_WRITE_AS_ZEROS);
+        /* reserve CPU 'selector' field (size in bits) */
+        aml_append(field, aml_reserved_field(ACPI_CPU_SELECTOR_FIELD_SIZE * 8));
+        /* flag::enabled(RO) - bit field. '1' if enabled */
         aml_append(field, aml_named_field(CPU_ENABLED, 1));
-        /* (read) 1 if has a device-check event. (write) 1 to clear event */
+        /*
+         * flag::devchk(RW)-read 1, has a device-check event, write 1, to clear
+         */
         aml_append(field, aml_named_field(CPU_DEVCHK_EVENT, 1));
-        /* (read) 1 if has a eject-request event. (write) 1 to clear event */
+        /*
+         * flag::ejectrq(RW)-read 1, has eject-request event, write 1 to clear
+         */
         aml_append(field, aml_named_field(CPU_EJECTRQ_EVENT, 1));
-        /* OSPM evals ACPI _EJx, initiates cpu eject in Qemu, write only */
+        /*
+         * flag::eject(WO) - OSPM evals ACPI _EJx, inits cpu eject in Qemu
+         */
         aml_append(field, aml_named_field(CPU_EJECT_EVENT, 1));
         aml_append(field, aml_reserved_field(4));
         aml_append(field, aml_named_field(CPU_COMMAND, 8));
         aml_append(cpu_ctrl_dev, field);
 
+        /* all double word accessible fields */
         field = aml_field("PRST", AML_DWORD_ACC, AML_NOLOCK, AML_PRESERVE);
         /* CPU selector, write only */
         aml_append(field, aml_named_field(CPU_SELECTOR, 32));
@@ -494,7 +516,7 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
                 aml_append(while_ctx, if_devchk);
 
                 /*
-                 * send CPU eject-request(standby-request) event to OSPM to
+                 * send CPU eject-request event to OSPM to
                  * gracefully handle OSPM related tasks running on this CPU
                  */
                 Aml *else_ctx = aml_else();
