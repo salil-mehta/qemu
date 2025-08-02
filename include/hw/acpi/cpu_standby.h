@@ -1,5 +1,5 @@
 /*
- * Qemu ACPI Utilities for standby CPUs.
+ * ACPI CPU OSPM Interface Handling.
  *
  * Copyright (c) 2025 Huawei Technologies R&D (UK) Ltd.
  *
