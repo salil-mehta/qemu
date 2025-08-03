@@ -24,37 +24,64 @@
  * Macros defining the CPU MMIO region layout.
  * Change field sizes here to alter the overall MMIO region size.
  */
+/*
+ *  Offset | Size (bytes) | Description
+ *  ---------------------------------------
+ *   0x00  |     4        | Selector (WO)
+ *   0x04  |     1        | Flags (RW)
+ *   0x05  |     3        | Reserved
+ *   0x08  |     1        | Command (WO)
+ *   0x09  |     3        | Reserved
+ *   0x0C  |     8        | Command Data (RW)
+ *  ---------------------------------------
+ *         |    20 bytes total
+ */
 
-/* Field sizes (in bytes) */
-#define ACPI_CPU_MR_SELECTOR_FIELD_SIZE  4  /* Write-only (DWord access) */
-#define ACPI_CPU_MR_FLAGS_FIELD_SIZE     1  /* Read-write (Byte access) */
-#define ACPI_CPU_MR_RES_FLAGS_FIELD_SIZE 3  /* Reserved padding */
-#define ACPI_CPU_MR_CMD_FIELD_SIZE       1  /* Write-only (Byte access) */
-#define ACPI_CPU_MR_RES_CMD_FIELD_SIZE   3  /* Reserved padding */
-#define ACPI_CPU_MR_CMD_DATA_FIELD_SIZE  8  /* Read-write (QWord access) */
+/* Sub-Field sizes (in bytes) */
+#define ACPI_CPU_MR_SELECTOR_SIZE     4  /* Write-only (DWord access) */
+#define ACPI_CPU_MR_FLAGS_SIZE        1  /* Read-write (Byte access) */
+#define ACPI_CPU_MR_RES_FLAGS_SIZE    3  /* Reserved padding */
+#define ACPI_CPU_MR_CMD_SIZE          1  /* Write-only (Byte access) */
+#define ACPI_CPU_MR_RES_CMD_SIZE      3  /* Reserved padding */
+#define ACPI_CPU_MR_CMD_DATA_SIZE     8  /* Read-write (QWord access) */
+
+/* Sub-Field sizes (in bits) */
+#define BITS_PER_BYTE  8
+#define ACPI_CPU_MR_SELECTOR_SIZE_BITS \
+    (ACPI_CPU_MR_SELECTOR_SIZE * BITS_PER_BYTE)  /* Write-only (DWord Acc) */
+#define ACPI_CPU_MR_FLAGS_SIZE_BITS \
+    (ACPI_CPU_MR_FLAGS_SIZE * BITS_PER_BYTE)     /* Read-write (Byte Acc) */
+#define ACPI_CPU_MR_RES_FLAGS_SIZE_BITS \
+    (ACPI_CPU_MR_RES_FLAGS_SIZE * BITS_PER_BYTE) /* Reserved padding */
+#define ACPI_CPU_MR_CMD_SIZE_BITS \
+    (ACPI_CPU_MR_CMD_SIZE * BITS_PER_BYTE)       /* Write-only (Byte Acc) */
+#define ACPI_CPU_MR_RES_CMD_SIZE_BITS \
+    (ACPI_CPU_MR_RES_CMD_SIZE * BITS_PER_BYTE)   /* Reserved padding */
+#define ACPI_CPU_MR_CMD_DATA_SIZE_BITS \
+    (ACPI_CPU_MR_CMD_DATA_SIZE * BITS_PER_BYTE)  /* Read-write (QWord Acc) */
 
 /* Field offsets (in bytes) */
 #define ACPI_CPU_MR_SELECTOR_OFFSET_WO  0
 #define ACPI_CPU_MR_FLAGS_OFFSET_RW \
     (ACPI_CPU_MR_SELECTOR_OFFSET_WO + \
-     ACPI_CPU_MR_SELECTOR_FIELD_SIZE)
-
+     ACPI_CPU_MR_SELECTOR_SIZE)
 #define ACPI_CPU_MR_CMD_OFFSET_WO \
     (ACPI_CPU_MR_FLAGS_OFFSET_RW + \
-     ACPI_CPU_MR_FLAGS_FIELD_SIZE + \
-     ACPI_CPU_MR_RES_FLAGS_FIELD_SIZE)
-
+     ACPI_CPU_MR_FLAGS_SIZE + \
+     ACPI_CPU_MR_RES_FLAGS_SIZE)
 #define ACPI_CPU_MR_CMD_DATA_OFFSET_RW \
     (ACPI_CPU_MR_CMD_OFFSET_WO + \
-     ACPI_CPU_MR_CMD_FIELD_SIZE + \
-     ACPI_CPU_MR_RES_CMD_FIELD_SIZE)
+     ACPI_CPU_MR_CMD_SIZE + \
+     ACPI_CPU_MR_RES_CMD_SIZE)
 
-/* Flag bit positions (used within FLAGS field) */
-#define ACPI_CPU_MR_FLAGS_BIT(x) (1 << (x))
-#define ACPI_CPU_MR_FLAGS_ENABLED_B  ACPI_CPU_MR_FLAGS_BIT(0)
-#define ACPI_CPU_MR_FLAGS_DEVCHK_B   ACPI_CPU_MR_FLAGS_BIT(1)
-#define ACPI_CPU_MR_FLAGS_EJECTRQ_B  ACPI_CPU_MR_FLAGS_BIT(2)
-#define ACPI_CPU_MR_FLAGS_EJECT_B    ACPI_CPU_MR_FLAGS_BIT(3)
+/* Flag bit positions (used within 'flags' subfield) */
+#define ACPI_CPU_FLAGS_BIT_ENABLED BIT(ACPI_CPU_FLAGS_USED_BITS - 4)
+#define ACPI_CPU_FLAGS_BIT_DEVCHK  BIT(ACPI_CPU_FLAGS_USED_BITS - 3)
+#define ACPI_CPU_FLAGS_BIT_EJECTRQ BIT(ACPI_CPU_FLAGS_USED_BITS - 2)
+#define ACPI_CPU_FLAGS_BIT_EJECT   BIT(ACPI_CPU_FLAGS_USED_BITS - 1)
+#define ACPI_CPU_FLAGS_USED_BITS 4
+
+#define ACPI_CPU_MR_RES_FLAG_BITS (BITS_PER_BYTE - ACPI_CPU_FLAGS_USED_BITS)
 
 enum {
     ACPI_GET_NEXT_CPU_WITH_EVENT_CMD = 0,
@@ -104,9 +131,9 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
     switch (addr) {
     case ACPI_CPU_MR_FLAGS_OFFSET_RW:
         val |= qdev_check_active(DEVICE(cdev->cpu)) ?
-                                 ACPI_CPU_MR_FLAGS_ENABLED_B : 0;
-        val |= cdev->devchk_pending ? ACPI_CPU_MR_FLAGS_DEVCHK_B : 0;
-        val |= cdev->ejrqst_pending ? ACPI_CPU_MR_FLAGS_EJECTRQ_B : 0;
+                                 ACPI_CPU_MR_FLAGS_BIT_ENABLED : 0;
+        val |= cdev->devchk_pending ? ACPI_CPU_MR_FLAGS_BIT_DEVCHK : 0;
+        val |= cdev->ejrqst_pending ? ACPI_CPU_MR_FLAGS_BIT_EJECTRQ : 0;
         trace_acpi_cpuos_if_read_flags(cpu_st->selector, val);
         break;
     case ACPI_CPU_MR_CMD_DATA_OFFSET_RW:
@@ -149,15 +176,15 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     case ACPI_CPU_MR_FLAGS_OFFSET_RW: /* set is_* fields  */
         cdev = &cpu_st->devs[cpu_st->selector];
-        if (data & ACPI_CPU_MR_FLAGS_DEVCHK_B) {
+        if (data & ACPI_CPU_MR_FLAGS_BIT_DEVCHK) {
             /* clear device-check pending event */
             cdev->devchk_pending = false;
             trace_acpi_cpuos_if_clear_devchk_evt(cpu_st->selector);
-        } else if (data & ACPI_CPU_MR_FLAGS_EJECTRQ_B) {
+        } else if (data & ACPI_CPU_MR_FLAGS_BIT_EJECTRQ) {
             /* clear eject-request pending event */
             cdev->ejrqst_pending = false;
             trace_acpi_cpuos_if_clear_ejrqst_evt(cpu_st->selector);
-        } else if (data & ACPI_CPU_MR_FLAGS_EJECT_B) {
+        } else if (data & ACPI_CPU_MR_FLAGS_BIT_EJECT) {
             DeviceState *dev = NULL;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
@@ -405,26 +432,42 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         /* First define all 'Byte accessible' fields & reserve other types */
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_WRITE_AS_ZEROS);
         /* reserve CPU 'selector' field (size in bits) */
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_FIELD_SIZE * 8));
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS));
         /* Flag::Enabled Bit(RO) - Read '1' if enabled */
         aml_append(field, aml_named_field(CPU_ENABLED, 1));
         /* Flag::Devchk Bit(RW) - Read '1', has a event. Write '1', to clear */
         aml_append(field, aml_named_field(CPU_DEVCHK_EVENT, 1));
         /* Flag::Ejectrq Bit(RW) - Read 1, has event. Write 1 to clear */
         aml_append(field, aml_named_field(CPU_EJECTRQ_EVENT, 1));
-        /* Flag::Eject Bit(WO) - OSPM evals ACPI _EJx, inits CPU Eject in Qemu*/
+        /* Flag::Eject Bit(WO) - OSPM evals _EJx, initiates CPU Eject in Qemu*/
         aml_append(field, aml_named_field(CPU_EJECT_EVENT, 1));
-        aml_append(field, aml_reserved_field(4));
-        aml_append(field, aml_named_field(CPU_COMMAND, 8));
+        /* Flag::Bit(5)-Bit(7) - Reserve left over bits of 1 byte space */
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAG_BITS));
+        /* Reserved padding for 4 byte alignment & future extension */
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAGS_SIZE_BITS));
+        aml_append(field, aml_named_field(CPU_COMMAND,
+                                          ACPI_CPU_MR_CMD_SIZE_BITS));
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_CMD_SIZE_BITS));
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
         aml_append(cpu_ctrl_dev, field);
 
-        /* Now, define all 'double word accessible' fields */
+        /* define all 'Dword accessible' fields */
         field = aml_field("PRST", AML_DWORD_ACC, AML_NOLOCK, AML_PRESERVE);
         /* CPU selector, write only */
-        aml_append(field, aml_named_field(CPU_SELECTOR, 32));
-        /* flags + cmd + 2byte align */
-        aml_append(field, aml_reserved_field(4 * 8));
-        aml_append(field, aml_named_field(CPU_DATA, 32));
+        aml_append(field, aml_named_field(CPU_SELECTOR,
+                                          ACPI_CPU_MR_FLAGS_SIZE_BITS));
+        aml_append(cpu_ctrl_dev, field);
+
+        /* Now, define all 'Qword accessible' fields */
+        field = aml_field("PRST", AML_QWORD_ACC, AML_NOLOCK, AML_PRESERVE);
+        /* Reserv flags + cmd + 2byte align */
+        aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS +
+                                             ACPI_CPU_MR_FLAGS_SIZE_BITS +
+                                             ACPI_CPU_MR_RES_FLAGS_SIZE_BITS +
+                                             ACPI_CPU_MR_CMD_SIZE_BITS +
+                                             ACPI_CPU_MR_RES_CMD_SIZE_BITS));
+        aml_append(field, aml_named_field(CPU_DATA,
+                                          ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
         aml_append(cpu_ctrl_dev, field);
     }
     aml_append(sb_scope, cpu_ctrl_dev);
