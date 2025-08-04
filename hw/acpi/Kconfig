@@ -21,7 +21,7 @@ config ACPI_ICH9
 config ACPI_CPU_HOTPLUG
     bool
 
-config ACPI_CPU_STANDBY
+config ACPI_CPU_OSPM_INTERFACE
     bool
 
 config ACPI_MEMORY_HOTPLUG

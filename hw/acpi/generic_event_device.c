@@ -111,8 +111,10 @@ void build_ged_aml(Aml *table, const char *name, DeviceState *acpi_ged,
                                              MEMORY_SLOT_SCAN_METHOD));
                 break;
             case ACPI_GED_CPU_POWERSTATE_EVT:
+#ifdef CONFIG_CPU_OSPM_INTERFACE
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUPS_SCAN_METHOD));
                 break;
+#endif
             case ACPI_GED_CPU_HOTPLUG_EVT:
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUHP_SCAN_METHOD));
                 break;
@@ -397,13 +399,13 @@ static const VMStateDescription vmstate_cpuhp_state = {
     }
 };
 
-static const VMStateDescription vmstate_cpusb_state = {
-    .name = "acpi-ged/cpusb",
+static const VMStateDescription vmstate_cpuospm_state = {
+    .name = "acpi-ged/cpu-ospm",
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = cpu_state_needed,
     .fields      = (VMStateField[]) {
-        VMSTATE_CPU_STANDBY(cpups_state, AcpiGedState),
+        VMSTATE_CPU_OSPM_STATE(cpuospm_state, AcpiGedState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -457,7 +459,7 @@ static const VMStateDescription vmstate_acpi_ged = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_memhp_state,
         &vmstate_cpuhp_state,
-        &vmstate_cpusb_state,
+        &vmstate_cpuospm_state,
         &vmstate_ghes_state,
         NULL
     }
@@ -481,14 +483,18 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
 
         switch (event) {
         case ACPI_GED_CPU_POWERSTATE_EVT:
-            /* initialize CPU Power State related regions */
+#ifdef CONFIG_CPU_OSPM_INTERFACE
+            /* initialize regions related to CPU OSPM interface to be used
+             * during notification of the power-on,off events to the OSPM
+             */
             memory_region_init(&s->container_cpups, OBJECT(dev),
-                                "cpu ospm interface container",
-                                ACPI_CPU_OSPM_IF_REG_LEN);
+                               "cpu ospm interface container",
+                               ACPI_CPU_OSPM_IF_REG_LEN);
             sysbus_init_mmio(sbd, &s->container_cpups);
             acpi_cpu_ospm_state_interface_init(&s->container_cpups, OBJECT(dev),
                                                &s->cpups_state, 0);
             break;
+#endif
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */
             memory_region_init(&s->container_cpuhp, OBJECT(dev),

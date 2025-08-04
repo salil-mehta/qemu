@@ -63,7 +63,7 @@
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/ghes.h"
 #include "hw/acpi/cpu.h"
-#include "hw/acpi/cpu_standby.h"
+#include "hw/acpi/cpu_ospm_interface.h"
 #include "qom/object.h"
 
 #define ACPI_POWER_BUTTON_DEVICE "PWRB"
@@ -117,7 +117,7 @@ struct AcpiGedState {
     MemoryRegion container_memhp;
     CPUHotplugState cpuhp_state;
     MemoryRegion container_cpuhp;
-    AcpiCPUStateContext cpups_state;
+    AcpiCpuOspmState cpuospm_state;
     MemoryRegion container_cpups;
     GEDState ged_state;
     uint32_t ged_event_bitmap;

@@ -18,32 +18,64 @@
 #include "qapi/qapi-events-acpi.h"
 #include "trace.h"
 #include "sysemu/numa.h"
-#include "hw/acpi/cpu_standby.h"
+#include "hw/acpi/cpu_ospm_interface.h"
 
 /*
- * Macros defining the CPU MMIO region layout.
- * Change field sizes here to alter the overall MMIO region size.
- */
-/*
- *  Offset | Size (bytes) | Description
- *  ---------------------------------------
- *   0x00  |     4        | Selector (WO)
- *   0x04  |     1        | Flags (RW)
- *   0x05  |     3        | Reserved
- *   0x08  |     1        | Command (WO)
- *   0x09  |     3        | Reserved
- *   0x0C  |     8        | Command Data (RW)
- *  ---------------------------------------
- *         |    20 bytes total
+ * CPU OSPM Interface MMIO Layout (Total: 24 bytes)
+ *
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * |  0x00  |  0x01  |  0x02  |  0x03  |  0x04  |  0x05  |  0x06  |  0x07  |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * |   Selector (DWord, write-only)    | Flags  |    Reserved (Padding)    |
+ * |                                   | (RO/RW)|     3 Bytes (24 bits)    |
+ * |     4 bytes (32 bits)             | 8 bits |                          |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * |  0x08  |  0x09  |  0x0A  |  0x0B  |  0x0C  |  0x0D  |  0x0E  |  0x0F  |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * | Command|                  Reserved (Padding)                          |
+ * |  (WO)  |                  7 Bytes (56 bits)                           |
+ * | 8 bits |                                                              |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * |  0x10  |  0x11  |  0x12  |  0x13  |  0x14  |  0x15  |  0x16  |  0x17  |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ * |                          Data (QWord, RW)                             |
+ * |                      (used by CPU Scan & _OST)                        |
+ * |                              64 bits                                  |
+ * +--------+--------+--------+--------+--------+--------+--------+--------+
+ *
+ * Legend:
+ * - Selector: sets target CPU index (WO)
+ * - Flags (8 bits total):
+ *     - Bit 0: ENABLED (RO)
+ *     - Bit 1: DEVCHK  (RW)
+ *     - Bit 2: EJECTRQ (RW)
+ *     - Bit 3: EJECT   (WO)
+ *     - Bits 4–7: Reserved
+ * - Command: Sets control command (e.g., CPU scan, _OST) (WO)
+ * - Data: Command input/output (64-bit) (RW)
  */
 
+/*
+ * Macros defining the CPU MMIO region layout. Change field sizes here to
+ * alter the overall MMIO region size.
+ */
 /* Sub-Field sizes (in bytes) */
-#define ACPI_CPU_MR_SELECTOR_SIZE     4  /* Write-only (DWord access) */
-#define ACPI_CPU_MR_FLAGS_SIZE        1  /* Read-write (Byte access) */
-#define ACPI_CPU_MR_RES_FLAGS_SIZE    3  /* Reserved padding */
-#define ACPI_CPU_MR_CMD_SIZE          1  /* Write-only (Byte access) */
-#define ACPI_CPU_MR_RES_CMD_SIZE      3  /* Reserved padding */
-#define ACPI_CPU_MR_CMD_DATA_SIZE     8  /* Read-write (QWord access) */
+#define ACPI_CPU_MR_SELECTOR_SIZE  4 /* Write-only (DWord access) */
+#define ACPI_CPU_MR_FLAGS_SIZE     1 /* Read-write (Byte access) */
+#define ACPI_CPU_MR_RES_FLAGS_SIZE 3 /* Reserved padding */
+#define ACPI_CPU_MR_CMD_SIZE       1 /* Write-only (Byte access) */
+#define ACPI_CPU_MR_RES_CMD_SIZE   7 /* Reserved padding */
+#define ACPI_CPU_MR_CMD_DATA_SIZE  8 /* Read-write (QWord access) */
+
+/* Validate layout against exported total length */
+_Static_assert(ACPI_CPU_OSPM_IF_REG_LEN ==
+               (ACPI_CPU_MR_SELECTOR_SIZE +
+                ACPI_CPU_MR_FLAGS_SIZE +
+                ACPI_CPU_MR_RES_FLAGS_SIZE +
+                ACPI_CPU_MR_CMD_SIZE +
+                ACPI_CPU_MR_RES_CMD_SIZE +
+                ACPI_CPU_MR_CMD_DATA_SIZE),
+               "ACPI_CPU_OSPM_IF_REG_LEN mismatch with internal MMIO layout");
 
 /* Sub-Field sizes (in bits) */
 #define BITS_PER_BYTE  8
@@ -75,10 +107,10 @@
      ACPI_CPU_MR_RES_CMD_SIZE)
 
 /* Flag bit positions (used within 'flags' subfield) */
-#define ACPI_CPU_FLAGS_BIT_ENABLED BIT(ACPI_CPU_FLAGS_USED_BITS - 4)
-#define ACPI_CPU_FLAGS_BIT_DEVCHK  BIT(ACPI_CPU_FLAGS_USED_BITS - 3)
-#define ACPI_CPU_FLAGS_BIT_EJECTRQ BIT(ACPI_CPU_FLAGS_USED_BITS - 2)
-#define ACPI_CPU_FLAGS_BIT_EJECT   BIT(ACPI_CPU_FLAGS_USED_BITS - 1)
+#define ACPI_CPU_MR_FLAGS_BIT_ENABLED BIT(ACPI_CPU_FLAGS_USED_BITS - 4)
+#define ACPI_CPU_MR_FLAGS_BIT_DEVCHK  BIT(ACPI_CPU_FLAGS_USED_BITS - 3)
+#define ACPI_CPU_MR_FLAGS_BIT_EJECTRQ BIT(ACPI_CPU_FLAGS_USED_BITS - 2)
+#define ACPI_CPU_MR_FLAGS_BIT_EJECT   BIT(ACPI_CPU_FLAGS_USED_BITS - 1)
 #define ACPI_CPU_FLAGS_USED_BITS 4
 
 #define ACPI_CPU_MR_RES_FLAG_BITS (BITS_PER_BYTE - ACPI_CPU_FLAGS_USED_BITS)
@@ -119,7 +151,7 @@ void acpi_cpus_ospm_status( *cpu_st, ACPIOSTInfoList ***list)
 static uint64_t
 acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
 {
-    AcpiCpuOspmStateIntf *cpu_st = opaque;
+    AcpiCpuOspmState *cpu_st = opaque;
     AcpiCpuOspmStateStatus *cdev;
     uint64_t val = 0;
 
@@ -156,7 +188,7 @@ static void
 acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
                             unsigned int size)
 {
-    AcpiCpuOspmStateIntf *cpu_st = opaque;
+    AcpiCpuOspmState *cpu_st = opaque;
     AcpiCpuOspmStateStatus *cdev;
     ACPIOSTInfo *info;
 
@@ -258,7 +290,7 @@ static const MemoryRegionOps cpu_common_mr_ops = {
 };
 
 void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
-                                        AcpiCpuOspmStateIntf *state,
+                                        AcpiCpuOspmState *state,
                                         hwaddr base_addr)
 {
     MachineState *machine = MACHINE(qdev_get_machine());
@@ -281,7 +313,7 @@ void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
 }
 
 static AcpiCpuOspmStateStatus *
-acpi_get_cpu_status(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev)
+acpi_get_cpu_status(AcpiCpuOspmState *cpu_st, DeviceState *dev)
 {
     CPUClass *k = CPU_GET_CLASS(dev);
     uint64_t cpu_arch_id = k->get_arch_id(CPU(dev));
@@ -295,7 +327,7 @@ acpi_get_cpu_status(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void acpi_cpu_device_check_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
+void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
                               Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
@@ -309,14 +341,14 @@ void acpi_cpu_device_check_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
 
     /*
      * Tell OSPM via GED that a powered-off cpu is being powered-on. Also, mark
-     * 'device-check' event pending for this cpu. This will eventually
-     * result in OSPM evaluating the ACPI _EVT method and scan of cpus
+     * 'device-check' event pending for this cpu. This will eventually result
+     * in OSPM evaluating the ACPI _EVT method and scan of cpus
      */
     cdev->devchk_pending = true;
     acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
 }
 
-void acpi_cpu_eject_request_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
+void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
                                Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
@@ -329,7 +361,7 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
     assert(cdev->cpu);
 
     /*
-     * Tell OSPM via GED that a cpu wants to power-off or go on standy. Also,
+     * Tell OSPM via GED that a cpu wants to power-off or go on standby. Also,
      * mark 'eject-request' event pending for this cpu. (graceful shutdown)
      */
     cdev->ejrqst_pending = true;
@@ -337,7 +369,7 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev,
 }
 
 void
-acpi_cpu_eject_cb(AcpiCpuOspmStateIntf *cpu_st, DeviceState *dev, Error **errp)
+acpi_cpu_eject_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev, Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
 
@@ -361,14 +393,14 @@ static const VMStateDescription vmstate_cpu_ospm_state_sts = {
     }
 };
 
-const VMStateDescription vmstate_cpu_powerstate = {
-    .name = "CPU OSPM state interface status",
+const VMStateDescription vmstate_cpu_ospm_state = {
+    .name = "CPU OSPM state",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (const VMStateField[]) {
-        VMSTATE_UINT32(selector, AcpiCpuOspmStateIntf),
-        VMSTATE_UINT8(command, AcpiCpuOspmStateIntf),
-        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, AcpiCpuOspmStateIntf,
+        VMSTATE_UINT32(selector, AcpiCpuOspmState),
+        VMSTATE_UINT8(command, AcpiCpuOspmState),
+        VMSTATE_STRUCT_VARRAY_POINTER_UINT32(devs, AcpiCpuOspmState,
                                              dev_count,
                                              vmstate_cpu_ospm_state_sts,
                                              AcpiCpuOspmStateStatus),
@@ -380,24 +412,23 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
                          const char *event_handler_method)
 {
     /* CPU identifier and resource device */
-    #define CPU_NAME_FMT       "C%.03X"  /* CPU name format (e.g., C001) */
-    #define CPUOS_RES_DEVICE   "PROS"    /* CPU OSPM control device name */
-    #define CPU_LOCK           "CPLK"    /* CPU lock object */
-    /* ACPI method handlers */
-    #define CPU_STS_METHOD     "CSTA"    /* CPU status method (_STA equiv.) */
-    #define CPU_SCAN_METHOD    "CSCN"    /* CPU scan method for enumeration */
-    #define CPU_NOTIFY_METHOD  "CTFY"    /* Notify method for CPU events */
-    #define CPU_EJECT_METHOD   "CEJ0"    /* CPU eject method (_EJ0 equiv.) */
-    #define CPU_OST_METHOD     "COST"    /* OSPM status reporting method */
-    /* CPU MMIO region subfields */
-    #define CPU_ENABLED        "CPEN"    /* Enabled flag */
-    #define CPU_SELECTOR       "CSEL"    /* CPU selector index */
-    #define CPU_COMMAND        "CCMD"    /* Command register */
-    #define CPU_DATA           "CDAT"    /* Data register */
-    /* ACPI event notifications */
-    #define CPU_DEVCHK_EVENT   "CDCK"    /* Notify: device-check event */
-    #define CPU_EJECTRQ_EVENT  "CEJR"    /* Notify: eject-request event */
-    #define CPU_EJECT_EVENT    "CEJ0"    /* Notify: ejection event (_EJ0) */
+    #define CPU_NAME_FMT      "C%.03X" /* CPU name format (e.g., C001) */
+    #define CPUOS_RES_DEVICE  "PROS" /* CPU OSPM control device name */
+    #define CPU_LOCK          "CPLK" /* CPU lock object */
+    /* ACPI method(_STA, _EJ0, etc.) handlers */
+    #define CPU_STS_METHOD    "CSTA" /* CPU status method (_STA.Enabled) */
+    #define CPU_SCAN_METHOD   "CSCN" /* CPU scan method for enumeration */
+    #define CPU_NOTIFY_METHOD "CTFY" /* Notify method for CPU events */
+    #define CPU_EJECT_METHOD  "CEJ0" /* CPU eject method (_EJ0) */
+    #define CPU_OST_METHOD    "COST" /* OSPM status reporting (_OST) */
+    /* CPU MMIO region fields (in PRST region) */
+    #define CPU_SELECTOR      "CSEL" /* CPU selector index (WO) */
+    #define CPU_ENABLED_F     "CPEN" /* Flag: CPU enabled status(_STA) (RO) */
+    #define CPU_DEVCHK_F      "CDCK" /* Flag: Device-check event (RW) */
+    #define CPU_EJECTRQ_F     "CEJR" /* Flag: Eject-request event (RW)*/
+    #define CPU_EJECT_F       "CEJ0" /* Flag: Ejection trigger (WO) */
+    #define CPU_COMMAND       "CCMD" /* Command register (RW) */
+    #define CPU_DATA          "CDAT" /* Data register (RW) */
 
     MachineState *machine = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(machine);
@@ -426,21 +457,24 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
         /* declare CPU OSPM Interface MMIO region related access fields */
         aml_append(cpu_ctrl_dev,
-            aml_operation_region("PRST", AML_SYSTEM_MEMORY, aml_int(base_addr),
-                                 ACPI_CPU_OSPM_IF_REG_LEN));
-
-        /* First define all 'Byte accessible' fields & reserve other types */
+                   aml_operation_region("PRST", AML_SYSTEM_MEMORY,
+                                        aml_int(base_addr),
+                                        ACPI_CPU_OSPM_IF_REG_LEN));
+        /*
+         * define named fields within PRST region with 'Byte' access widths
+         * and reserve fields with other access width
+         */
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_WRITE_AS_ZEROS);
         /* reserve CPU 'selector' field (size in bits) */
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS));
         /* Flag::Enabled Bit(RO) - Read '1' if enabled */
-        aml_append(field, aml_named_field(CPU_ENABLED, 1));
+        aml_append(field, aml_named_field(CPU_ENABLED_F, 1));
         /* Flag::Devchk Bit(RW) - Read '1', has a event. Write '1', to clear */
-        aml_append(field, aml_named_field(CPU_DEVCHK_EVENT, 1));
+        aml_append(field, aml_named_field(CPU_DEVCHK_F, 1));
         /* Flag::Ejectrq Bit(RW) - Read 1, has event. Write 1 to clear */
-        aml_append(field, aml_named_field(CPU_EJECTRQ_EVENT, 1));
+        aml_append(field, aml_named_field(CPU_EJECTRQ_F, 1));
         /* Flag::Eject Bit(WO) - OSPM evals _EJx, initiates CPU Eject in Qemu*/
-        aml_append(field, aml_named_field(CPU_EJECT_EVENT, 1));
+        aml_append(field, aml_named_field(CPU_EJECT_F, 1));
         /* Flag::Bit(5)-Bit(7) - Reserve left over bits of 1 byte space */
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAG_BITS));
         /* Reserved padding for 4 byte alignment & future extension */
@@ -451,14 +485,20 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
         aml_append(cpu_ctrl_dev, field);
 
-        /* define all 'Dword accessible' fields */
+        /*
+         * define named fields with 'Dword' access widths and reserve fields
+         * with other access width
+         */
         field = aml_field("PRST", AML_DWORD_ACC, AML_NOLOCK, AML_PRESERVE);
         /* CPU selector, write only */
         aml_append(field, aml_named_field(CPU_SELECTOR,
-                                          ACPI_CPU_MR_FLAGS_SIZE_BITS));
+                                          ACPI_CPU_MR_SELECTOR_SIZE_BITS));
         aml_append(cpu_ctrl_dev, field);
 
-        /* Now, define all 'Qword accessible' fields */
+        /*
+         * define named fields with 'Qword' access widths and reserve fields
+         * with other access width
+         */
         field = aml_field("PRST", AML_QWORD_ACC, AML_NOLOCK, AML_PRESERVE);
         /* Reserv flags + cmd + 2byte align */
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS +
@@ -474,15 +514,15 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
     cpus_dev = aml_device("\\_SB.CPUS");
     {
-        int i;
         Aml *ctrl_lock = aml_name("%s.%s", res_path, CPU_LOCK);
         Aml *cpu_selector = aml_name("%s.%s", res_path, CPU_SELECTOR);
-        Aml *is_enabled = aml_name("%s.%s", res_path, CPU_ENABLED);
+        Aml *is_enabled = aml_name("%s.%s", res_path, CPU_ENABLED_F);
+        Aml *dvchk_evt = aml_name("%s.%s", res_path, CPU_DEVCHK_F);
+        Aml *ejrq_evt = aml_name("%s.%s", res_path, CPU_EJECTRQ_F);
+        Aml *ej_evt = aml_name("%s.%s", res_path, CPU_EJECT_F);
         Aml *cpu_cmd = aml_name("%s.%s", res_path, CPU_COMMAND);
         Aml *cpu_data = aml_name("%s.%s", res_path, CPU_DATA);
-        Aml *dvchk_evt = aml_name("%s.%s", res_path, CPU_DEVCHK_EVENT);
-        Aml *ejrq_evt = aml_name("%s.%s", res_path, CPU_EJECTRQ_EVENT);
-        Aml *ej_evt = aml_name("%s.%s", res_path, CPU_EJECT_EVENT);
+        int i;
 
         aml_append(cpus_dev, aml_name_decl("_HID", aml_string("ACPI0010")));
         aml_append(cpus_dev, aml_name_decl("_CID", aml_eisaid("PNP0A05")));
@@ -546,8 +586,10 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
             Aml *dev_chk = aml_int(1); /* Notify: device check to enable */
             Aml *eject_req = aml_int(3); /* Notify: eject for removal */
             Aml *next_cpu_cmd = aml_int(ACPI_GET_NEXT_CPU_WITH_EVENT_CMD);
+
             /* Acquire CPU lock */
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
+
             /* Initialize loop */
             aml_append(method, aml_store(zero, uid));
             aml_append(method, aml_store(one, has_event));
@@ -585,8 +627,8 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
                 aml_append(while_ctx, if_devchk);
 
                 /*
-                 * send CPU eject-request event to OSPM to
-                 * gracefully handle OSPM related tasks running on this CPU
+                 * send CPU eject-request event to OSPM to gracefully handle
+                 * OSPM related tasks running on this CPU
                  */
                 Aml *else_ctx = aml_else();
                 Aml *if_ejrq = aml_if(aml_equal(ejrq_evt, one));
