@@ -1781,9 +1781,7 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
-
-static DeviceState *
-virt_find_cpu(const QDict *opts, bool from_json, Error **errp)
+static DeviceState * virt_find_cpu(const QDict *opts, Error **errp)
 {
     int64_t socket_id=0, cluster_id=0, core_id=0, thread_id=0;
     int cpu_id, sock_vcpu_num, clus_vcpu_num, core_vcpu_num;
@@ -1792,29 +1790,18 @@ virt_find_cpu(const QDict *opts, bool from_json, Error **errp)
 
     assert(opts);
 
-    /* fetch the topology of the cpu being plugged */
-    if (from_json) {
-        socket_id = qdict_get_try_int(opts, "socket-id", 0);
-        cluster_id = qdict_get_try_int(opts, "cluster-id", 0);
-        core_id = qdict_get_try_int(opts, "core-id", 0);
-        thread_id = qdict_get_try_int(opts, "thread-id", 0);
-    } else {
-        if ((qdict_get_try_str(opts,"socket-id"))) {
-            socket_id = strtol(qdict_get_try_str(opts, "socket-id"),
-                               NULL, 10);
-        }
-        if ((qdict_get_try_str(opts,"cluster-id"))) {
-            cluster_id = strtol(qdict_get_try_str(opts, "cluster-id"),
-                                NULL, 10);
-        }
-        if ((qdict_get_try_str(opts,"core-id"))) {
-            core_id = strtol(qdict_get_try_str(opts, "core-id"),
-                             NULL, 10);
-        }
-        if ((qdict_get_try_str(opts,"thread-id"))) {
-            thread_id = strtol(qdict_get_try_str(opts, "thread-id"),
-                               NULL, 10);
-        }
+    /* fetch the topology of the cpu being sought */
+    if ((qdict_get_try_str(opts,"socket-id"))) {
+        socket_id = strtol(qdict_get_try_str(opts, "socket-id"), NULL, 10);
+    }
+    if ((qdict_get_try_str(opts,"cluster-id"))) {
+        cluster_id = strtol(qdict_get_try_str(opts, "cluster-id"), NULL, 10);
+    }
+    if ((qdict_get_try_str(opts,"core-id"))) {
+        core_id = strtol(qdict_get_try_str(opts, "core-id"), NULL, 10);
+    }
+    if ((qdict_get_try_str(opts,"thread-id"))) {
+        thread_id = strtol(qdict_get_try_str(opts, "thread-id"), NULL, 10);
     }
 
     warn_report("[%s] cpu(%ld:%ld:%ld:%ld)\n", __func__,
@@ -1864,8 +1851,7 @@ virt_find_cpu(const QDict *opts, bool from_json, Error **errp)
 }
 
 static DeviceState *
-virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
-                  Error **errp)
+virt_find_device(DeviceListener *listener, const QDict *opts, Error **errp)
 {
     const char *typename;
     DeviceState *dev;
@@ -1880,13 +1866,7 @@ virt_find_device(DeviceListener *listener, const QDict *opts, bool from_json,
     }
 
     if (!strcmp(cputype_from_typename(typename), TYPE_ARM_CPU)) {
-        dev = virt_find_cpu(opts, from_json, errp);
-        if (*errp)
-        {
-            error_setg(errp, "Error in finding matching cpu device");
-            return NULL;
-        }
-        return dev;
+        return virt_find_cpu(opts, errp);
     }
 
     return NULL;
@@ -1978,6 +1958,13 @@ virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
         error_setg(errp, "can't power-off  boot CPU (id=%d [%d:%d:%d:%d])",
                    first_cpu->cpu_index, cpu->socket_id, cpu->cluster_id,
                    cpu->core_id, cpu->thread_id);
+        return;
+    }
+
+    if (!dev->realized) {
+        /* changing the pre-realized default state of device */
+        qatomic_set(&dev->power_state, DEVICE_POWER_STATE_OFF);
+        smp_wmb();
         return;
     }
 
@@ -2727,8 +2714,8 @@ static void machvirt_init(MachineState *machine)
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
             }
 
-            /* mark this vCPU to be in the 'standby' state */
-            qdev_standby(DEVICE(cpuobj), NULL, &error_fatal);
+            /* mark this vCPU to be in the 'powered-off' state in QOM */
+            qdev_poweroff(DEVICE(cpuobj), NULL, &error_fatal);
         }
 
         cpu_slot = virt_get_possible_cpu_arch_id(n);

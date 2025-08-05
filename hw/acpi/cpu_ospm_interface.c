@@ -174,6 +174,8 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
            val = cpu_st->selector;
            break;
         default:
+           trace_acpi_cpuos_if_read_invalid_cmd_data(cpu_st->selector,
+                                                     cpu_st->command);
            break;
         }
         trace_acpi_cpuos_if_read_cmd_data(cpu_st->selector, val);
@@ -229,7 +231,7 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
              */
             trace_acpi_cpuos_if_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            qdev_standby_now(dev, &error_fatal);
+            qdev_poweroff_now(dev, &error_fatal);
         }
         break;
     case ACPI_CPU_MR_CMD_OFFSET_WO:
@@ -271,10 +273,13 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
            break;
         }
         default:
+           trace_acpi_cpuos_if_write_invalid_cmd(cpu_st->selector,
+                                                 cpu_st->command);
            break;
         }
         break;
     default:
+        trace_acpi_cpuos_if_write_invalid_offset(cpu_st->selector, addr);
         break;
     }
 }

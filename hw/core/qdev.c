@@ -242,7 +242,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 }
 
 DeviceState *
-qdev_find_device(const QDict *opts, bool from_json, Error **errp)
+qdev_find_device(const QDict *opts, Error **errp)
 {
     ERRP_GUARD();
     DeviceListener *listener;
@@ -250,7 +250,7 @@ qdev_find_device(const QDict *opts, bool from_json, Error **errp)
 
     QTAILQ_FOREACH(listener, &device_listeners, link) {
         if (listener->find_device) {
-            dev = listener->find_device(listener, opts, from_json, errp);
+            dev = listener->find_device(listener, opts, errp);
             if (*errp) {
                 return NULL;
             } else if (dev) {
@@ -345,10 +345,12 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
-bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
+bool qdev_poweroff(DeviceState *dev, BusState *bus, Error **errp)
 {
+    g_assert(dev);
+
     if (bus) {
-        error_setg(errp, "Device %s does not supports standby/resume",
+        error_setg(errp, "Device %s powering off operation not supported",
                    object_get_typename(OBJECT(dev)));
         return false;
     } else {
@@ -356,12 +358,14 @@ bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp)
         assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return object_property_set_bool(OBJECT(dev), "standby", true, errp);
+    return object_property_set_str(OBJECT(dev), "power_state", "off", &err);
 }
 
-void qdev_standby_now(DeviceState *dev, Error **errp)
+void qdev_poweroff_now(DeviceState *dev, Error **errp)
 {
     PowerStateHandler *handler;
+
+    g_assert(dev);
 
     /*
      * We are here because the OSPM has already issued the ACPI _EJx method
@@ -369,36 +373,70 @@ void qdev_standby_now(DeviceState *dev, Error **errp)
      * initiates a graceful eject of the device from the platform.
      */
     handler = powerstate_handler(dev);
-    assert(handler);
+    g_assert(handler);
 
     handle_poweroff(handler, dev, errp);
     if (*errp) {
-        error_prepend(errp, "failed to put device %s into standby",
+        error_prepend(errp, "failed to power off device %s",
                       object_get_typename(OBJECT(dev)));
         return;
     }
 
-    qatomic_set(&dev->standby, true);
+    /* Now, it is safe to update device power state to OFF */
+    qatomic_set(&dev->power_state, DEVICE_POWER_STATE_OFF);
     smp_wmb();
 
-    /* do not migrate the device in standby state */
+    /* do not migrate the device in powered-off state */
     if (qdev_get_vmsd(dev)) {
         vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
     }
 }
 
-bool qdev_resume(DeviceState *dev, BusState *bus, Error **errp)
+bool qdev_poweron(DeviceState *dev, BusState *bus, Error **errp)
 {
+    g_assert(dev);
+
     if (bus) {
-        error_setg(errp, "Device %s does not supports standby/resume",
+        error_setg(errp, "Device %s does not supports powering on operation",
                    object_get_typename(OBJECT(dev)));
         return false;
     } else {
         /* for devices like cpu */
-        assert(!DEVICE_GET_CLASS(dev)->bus_type);
+        g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return object_property_set_bool(OBJECT(dev), "standby", false, errp);
+    return object_property_set_str(OBJECT(dev), "power_state", "on", &err);
+}
+
+bool qdev_check_active(DeviceState *dev)
+{
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    DevicePowerState state;
+
+    g_assert(dev);
+
+    /*
+     * if device supports power state transitions, check if it is not in 'off'
+     * or 'standby' state.
+     */
+    if (dc->can_change_power_state) {
+        state = object_property_get_enum(OBJECT(dev), "power_state",
+                                         "DevicePowerState", NULL);
+
+        if (state != DEVICE_POWER_STATE_ON) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int qdev_get_power_state(DeviceState *dev)
+{
+    g_assert(dev);
+
+    return object_property_get_enum(OBJECT(dev), "power_state",
+                                    "DevicePowerState", NULL);
 }
 
 bool qdev_machine_modified(void)
@@ -726,23 +764,22 @@ static bool device_get_hotplugged(Object *obj, Error **errp)
     return dev->hotplugged;
 }
 
-static bool device_get_poweredoff(Object *obj, Error **errp)
+static int device_get_power_state(Object *obj, Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
-    return dev->powered_off;
+    return DEVICE(obj)->power_state;
 }
 
-static void device_set_poweredoff(Object *obj, bool value, Error **errp)
+static void device_set_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
-    PowerStateHandlerClass *pshc;
     PowerStateHandler *handler;
+    DevicePowerState old_state;
 
-    warn_report("[%s] device-ID%s\n", __func__, dev->id);
+    warn_report("[%s] device-ID=%s", __func__, dev->id);
 
-    if (!dc->can_power_off) {
-        error_setg(errp, "Device '%s' does not support power-{on,off}",
+    if (!dc->can_change_power_state) {
+        error_setg(errp, "Device '%s' does not support power state change",
                    object_get_typename(obj));
         return;
     }
@@ -750,27 +787,43 @@ static void device_set_poweredoff(Object *obj, bool value, Error **errp)
     handler = powerstate_handler(dev);
     assert(handler);
 
-    if (value && !dev->powered_off) {
-        /* device 'power-off' handling */
+    old_state = qatomic_read(&dev->power_state);
+
+    switch ((DevicePowerState)new_state) {
+    case DEVICE_POWER_STATE_OFF: {
+        PowerStateHandlerClass *pshc;
+        if (old_state == DEVICE_POWER_STATE_OFF) {
+            break;
+        }
+
         if (!dev->realized) {
-            dev->powered_off = true;
-            return;
+            /* changing the pre-realized default state of device */
+            qatomic_set(&dev->power_state, DEVICE_POWER_STATE_OFF);
+            smp_wmb();
+            break;
         }
 
         pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
-        /* check if device need to do this asynchronously */
+        /* check if device need to do power-off asynchronously */
         if (pshc->poweroff_request && phase_check(PHASE_MACHINE_READY)) {
+            /* this will cause notification to OSPM for graceful handling */
             handle_poweroff_request(handler, dev, errp);
         } else {
-            qdev_standby_now(dev, errp);
+            /* power state will be toggled in this context */
+            qdev_poweroff_now(dev, errp);
         }
-
         if (*errp) {
             error_prepend(errp, "Failed to power-off device '%s': ", dev->id);
             return;
         }
-    } else if (!value && dev->powered_off) {
-        /* device 'power-on' handling */
+
+        break;
+    }
+    case DEVICE_POWER_STATE_ON: {
+        if (old_state == DEVICE_POWER_STATE_ON) {
+            break;
+        }
+
         handle_poweron(handler, dev, errp);
         if (*errp) {
             error_prepend(errp, "Failed to power-on device '%s': ", dev->id);
@@ -790,8 +843,20 @@ static void device_set_poweredoff(Object *obj, bool value, Error **errp)
             }
         }
 
-        qatomic_store_release(&dev->powered_off, value);
+        qatomic_set(&dev->power_state, DEVICE_POWER_STATE_ON);
         smp_wmb();
+        break;
+    }
+    case DEVICE_POWER_STATE_STANDBY: {
+        error_setg(errp, "Device '%s': standby state handling not implemented",
+                   dev->id);
+        break;
+    }
+    default: {
+        error_setg(errp, "Invalid power state %d for device '%s'", new_state,
+                   dev->id);
+        break;
+    }
     }
 }
 
@@ -894,6 +959,15 @@ device_vmstate_if_get_id(VMStateIf *obj)
     return qdev_get_dev_path(dev);
 }
 
+static const QEnumLookup device_power_state_lookup = {
+    .array = (const char *const[]) {
+        [DEVICE_POWER_STATE_ON]      = "on",
+        [DEVICE_POWER_STATE_STANDBY] = "standby",
+        [DEVICE_POWER_STATE_OFF]     = "off",
+    },
+    .size = DEVICE_POWER_STATE__MAX,
+};
+
 static void device_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
@@ -928,9 +1002,10 @@ static void device_class_init(ObjectClass *class, void *data)
                                    device_get_hotpluggable, NULL);
     object_class_property_add_bool(class, "hotplugged",
                                    device_get_hotplugged, NULL);
-    object_class_property_add_bool(class, "powered-off",
-                                   device_get_poweredoff,
-                                   device_set_poweredoff);
+    object_class_property_add_enum(class, "power_state", "DevicePowerState",
+                                   &device_power_state_lookup,
+                                   device_get_power_state,
+                                   device_set_power_state);
     object_class_property_add_link(class, "parent_bus", TYPE_BUS,
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }

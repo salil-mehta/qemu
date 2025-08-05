@@ -146,8 +146,8 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
         warn_report("Putting CPU %d into standby to match the migrated state",
                     cs->cpu_index);
 
-        /* Put this vCPU into 'standby' mode to reflect the incoming state */
-        qdev_standby(DEVICE(cs), NULL, &error_fatal);
+        /* 'power-off' this vCPU to reflect the incoming state */
+        qdev_poweroff(DEVICE(cs), NULL, &error_fatal);
     }
 
     return 0;

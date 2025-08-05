@@ -225,8 +225,21 @@ CPUPowerStateInfoList *qmp_query_cpus_power_state(Error **errp)
         info->qom_path = object_get_canonical_path(OBJECT(cpu));
 
         /* Determine current power state */
-        bool is_active = qdev_check_active(DEVICE(cpu));
-        info->state = is_active ? CPU_POWER_STATE_ON : CPU_POWER_STATE_STANDBY;
+        switch (qdev_get_power_state(DEVICE(cpu))) {
+        case DEVICE_POWER_STATE_ON:
+            info->state = CPU_POWER_STATE_ON;
+            break;
+        case DEVICE_POWER_STATE_STANDBY:
+            info->state = CPU_POWER_STATE_STANDBY;
+            break;
+        case DEVICE_POWER_STATE_OFF:
+            info->state = CPU_POWER_STATE_OFF;
+            break;
+        default:
+            /* This should never be hit */
+            g_assert_not_reached();
+            break;
+        }
 
         /* Add to result list */
         CPUPowerStateInfoList *entry = g_new0(CPUPowerStateInfoList, 1);

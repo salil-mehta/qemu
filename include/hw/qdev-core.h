@@ -152,7 +152,7 @@ struct DeviceClass {
      */
     bool user_creatable;
     bool hotpluggable;
-    bool can_power_off;
+    bool can_change_power_state;
 
     /* callbacks */
     /**
@@ -210,6 +210,13 @@ typedef QLIST_HEAD(, NamedGPIOList) NamedGPIOListHead;
 typedef QLIST_HEAD(, NamedClockList) NamedClockListHead;
 typedef QLIST_HEAD(, BusState) BusStateHead;
 
+typedef enum DevicePowerState {
+    DEVICE_POWER_STATE_ON = 0, /* Default active state */
+    DEVICE_POWER_STATE_STANDBY, /* Low-power, context-retained */
+    DEVICE_POWER_STATE_OFF, /* Fully powered down */
+    DEVICE_POWER_STATE__MAX,
+} DevicePowerState;
+
 /**
  * struct DeviceState - common device state, accessed with qdev helpers
  *
@@ -234,13 +241,9 @@ struct DeviceState {
      */
     bool realized;
     /**
-     * @standby: is device on standby?
+     * @power_state: is device powered off, on or in standby?
      */
-    /* bool standby; */
-    /**
-     * @powered_off: is device powered-off but present?
-     */
-    bool powered_off;
+    DevicePowerState power_state;
     /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
@@ -329,7 +332,7 @@ struct DeviceListener {
      */
     DeviceState * (*find_device)(DeviceListener *listener,
                                  const QDict *device_opts,
-                                 bool from_json, Error **errp);
+                                 Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -531,22 +534,78 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
- * qdev_standby: put device.on standby mode
- * @dev: device to put on standby
- * @bus: bus on which device is sitting(may be NULL e.g. for devices like cpus)
- * @errp: pointer to error object
+ * qdev_poweroff_now - Immediately transition the device into power-off state
+ * @dev:   The device to be powered off
+ * @errp:  Pointer to a location where an error can be reported
  *
- * Depending upon the type of device, this should result in sequence
- * of (a)synchronous handling to put device in the standby mode
+ * This function forcefully powers off the specified device by directly invoking
+ * the associated PowerStateHandler. It bypasses any asynchronous mechanism such
+ * as ACPI _EJx-based signaling, assuming that the device is already safe to
+ * remove or shut down. This is typically used after OSPM has acknowledged an
+ * eject request (e.g., Notify(..., 0x03)) and issued a formal eject command.
  *
- * @dev must have already been realized
- *
- * Return: true on success, else false setting @errp with error
+ * This call is only valid after the device has been realized. On failure, the
+ * @errp will be set with the relevant error message.
  */
-bool qdev_standby(DeviceState *dev, BusState *bus, Error **errp);
-bool qdev_resume(DeviceState *dev, BusState *bus, Error **errp);
-void qdev_standby_now(DeviceState *dev, Error **errp);
+void qdev_poweroff_now(DeviceState *dev, Error **errp);
+
+/**
+ * qdev_poweron - Transition the device into power-on state
+ * @dev:   The device to be powered on
+ * @bus:   The bus on which the device is connected (may be NULL for CPUs)
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function triggers the power-on operation for a given device using the
+ * registered PowerStateHandler. It may also re-register the device with the
+ * migration system, depending on its previous power state and the platform’s
+ * migration policy. The device must already be realized and in OFF or STANDBY
+ * state before calling this function.
+ *
+ * Returns true if the operation succeeds; false if an error occurs, in which
+ * case @errp will be set accordingly.
+ */
+bool qdev_poweron(DeviceState *dev, BusState *bus, Error **errp);
+
+/**
+ * qdev_poweroff - Initiate power-off transition for the device
+ * @dev:   The device to be powered off
+ * @bus:   The bus on which the device resides (may be NULL for devs like CPUs)
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function begins the power-off process for the specified device.Depending
+ * on the device type and platform configuration, this may be handled
+ * synchronously or may involve asynchronous mechanisms such as notifying the
+ * operating system through ACPI events. It is expected that the device has
+ * already been realized before invoking this operation.
+ *
+ * Returns true on success; false if an error occurs, with @errp populated.
+ */
+bool qdev_poweroff(DeviceState *dev, BusState *bus, Error **errp);
+
+/**
+ * qdev_check_active - Determine whether the device is currently active
+ * @dev:  The device to check
+ *
+ * This function checks the current operational state of the device. A device is
+ * considered "active" if it is not powered off or in standby state. The check
+ * uses the internal power state field and associated device properties to
+ * determine activity.
+ *
+ * Returns true if the device is active (powered ON); false otherwise.
+ */
 bool qdev_check_active(DeviceState *dev);
+
+/**
+ * qdev_get_power_state - Retrieve current power state of the device
+ * @dev:  The device whose power state is to be queried
+ *
+ * Returns the current power state of the device as stored in its internal state
+ * field, typically mapped from the "power-state" property. The result is one of
+ * the values from the DevicePowerState enum: ON, OFF, or STANDBY.
+ *
+ * Returns an integer value corresponding to a DevicePowerState enum constant.
+ */
+int qdev_get_power_state(DeviceState *dev);
 
 /**
  * qdev_unrealize: Unrealize a device
@@ -1115,7 +1174,6 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * qdev_find_device() - find the device
  *
  * @opts: options QDict
- * @from_json: true if @opts entries are typed, false for all strings
  * @errp: pointer to error object
  *
  * Called when device state is toggled via qdev_device_state()
@@ -1123,7 +1181,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * Return: a DeviceState on success and NULL on failure
  */
 DeviceState *
-qdev_find_device(const QDict *opts, bool from_json, Error **errp);
+qdev_find_device(const QDict *opts, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

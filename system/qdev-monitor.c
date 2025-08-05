@@ -264,9 +264,9 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     dc = DEVICE_CLASS(oc);
     if (!dc->user_creatable ||
         (phase_check(PHASE_MACHINE_READY) && !dc->hotpluggable) ||
-        (phase_check(PHASE_MACHINE_READY) && !dc->can_power_off)) {
+        (phase_check(PHASE_MACHINE_READY) && !dc->can_change_power_state)) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
-                   "a pluggable device type or which can standby/resume");
+                   "a pluggable device type or which can change power state");
         return NULL;
     }
 
@@ -588,17 +588,6 @@ static BusState *qbus_find(const char *path, Error **errp)
         return NULL;
     }
     return bus;
-}
-
-bool qdev_check_active(DeviceState *dev)
-{
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
-
-    if (dc->can_power_off &&
-        object_property_get_bool(OBJECT(dev), "powered-off", NULL)) {
-        return false;
-    }
-    return true;
 }
 
 /* Takes ownership of @id, will be freed when deleting the device */
@@ -1032,24 +1021,19 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         error_setg(errp, "no device state change specified for device %s ",
                    dev->id);
         return;
-    } else if (!strcmp(state, "active")) {
-        if (qdev_check_active(dev)) {
-            error_setg(errp, "device %s is already active", id);
+    } else if (!strcmp(state, "on")) {
+
+        if (!qdev_poweron(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
             return;
         }
-
-        if (!qdev_resume(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
+    } else if (!strcmp(state, "off")) {
+        if (!qdev_poweroff(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
             return;
         }
     } else if (!strcmp(state, "standby")) {
-        if (!qdev_check_active(dev)) {
-            error_setg(errp, "device %s is already in standby mode", id);
-            return;
-        }
-
-        if (!qdev_standby(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
-            return;
-        }
+        error_setg(errp, "state *%s* not implemented for device %s", state,
+                   dev->id);
+        return;
     } else {
         error_setg(errp, "unrecognized specified state *%s* for device %s",
                    state, dev->id);
@@ -1186,14 +1170,14 @@ void device_set_completion(ReadLineState *rs, int nb_args, const char *str)
     size_t len;
 
     if (nb_args == 1) {
-        /* Complete device types that support standby */
+        /* Complete device types that support power state change */
         len = strlen(str);
         readline_set_completion_index(rs, len);
         list = elt = object_class_get_list(TYPE_DEVICE, false);
         while (elt) {
             DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
                                                  TYPE_DEVICE);
-            if (dc->can_power_off) {
+            if (dc->can_change_power_state) {
                 readline_add_completion_of(rs, str,
                     object_class_get_name(OBJECT_CLASS(dc)));
             }
@@ -1203,7 +1187,8 @@ void device_set_completion(ReadLineState *rs, int nb_args, const char *str)
     } else if (nb_args == 2) {
         /* Complete state argument */
         readline_set_completion_index(rs, strlen(str));
-        readline_add_completion_of(rs, str, "active");
+        readline_add_completion_of(rs, str, "on");
+        readline_add_completion_of(rs, str, "off");
         readline_add_completion_of(rs, str, "standby");
     }
 }
