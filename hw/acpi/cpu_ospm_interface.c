@@ -78,7 +78,6 @@ _Static_assert(ACPI_CPU_OSPM_IF_REG_LEN ==
                "ACPI_CPU_OSPM_IF_REG_LEN mismatch with internal MMIO layout");
 
 /* Sub-Field sizes (in bits) */
-#define BITS_PER_BYTE  8
 #define ACPI_CPU_MR_SELECTOR_SIZE_BITS \
     (ACPI_CPU_MR_SELECTOR_SIZE * BITS_PER_BYTE)  /* Write-only (DWord Acc) */
 #define ACPI_CPU_MR_FLAGS_SIZE_BITS \
@@ -138,7 +137,7 @@ acpi_cpu_ospm_ost_status(int idx, AcpiCpuOspmStateStatus *cdev)
     return info;
 }
 
-void acpi_cpus_ospm_status( *cpu_st, ACPIOSTInfoList ***list)
+void acpi_cpus_ospm_status(AcpiCpuOspmState *cpu_st, ACPIOSTInfoList ***list)
 {
     ACPIOSTInfoList ***tail = list;
     int i;
