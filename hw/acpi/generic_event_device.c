@@ -562,7 +562,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug = acpi_ged_unplug_cb;
 
     pshc->poweron = acpi_ged_poweron_cb;
-    pshc->request_poweroff = acpi_ged_request_poweroff_cb;
+    pshc->poweroff_request = acpi_ged_request_poweroff_cb;
     pshc->poweroff = acpi_ged_poweroff_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;
