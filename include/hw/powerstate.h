@@ -47,7 +47,7 @@ typedef void (*powerstate_fn)(PowerStateHandler *handler, DeviceState *dev,
  *
  * @parent: Opaque parent interface.
  *
- * @request_poweroff: Optional callback to notify the guest or internal logic
+ * @poweroff_request: Optional callback to notify the guest or internal logic
  *                    that the device is about to power off. This may be used
  *                    to initiate graceful shutdown or cleanup.
  *
@@ -63,7 +63,7 @@ struct PowerStateHandlerClass {
     InterfaceClass parent;
 
     /* <public> */
-    powerstate_fn request_poweroff;
+    powerstate_fn poweroff_request;
     powerstate_fn poweroff;
     powerstate_fn poweron;
 };

@@ -1142,7 +1142,7 @@
 ##
 # @CPUPowerStateInfo:
 #
-# CPU status combining both administrative and guest-visible runtime state.
+# CPU status combining both administrative and operational/runtime state.
 #
 # @id: CPU index
 # @core-id: Core ID (optional)
@@ -1157,7 +1157,7 @@
 # @vcpus-count: Number of threads under this logical CPU (optional)
 # @qom-path: QOM object path (optional)
 # @admin-state: Administrative power state (enabled/disabled/removed)
-# @operational-state: Guest-visible runtime power state (on/standby/off)
+# @oper-state: Guest-visible runtime power state (on/standby/off)
 ##
 { 'struct': 'CPUPowerStateInfo',
   'data': {
@@ -1174,7 +1174,7 @@
     '*vcpus-count': 'int',
     '*qom-path': 'str',
     'admin-state': 'CPUPowerState',
-    'operational-state': 'CPUOperationalState'
+    'oper-state': 'CPUOperationalState'
   } }
 
 ##
@@ -1758,7 +1758,7 @@
 #
 # @cpus: number of virtual CPUs in the virtual machine
 #
-# @offlinecpus: number of additional present but powered-off(or offline) CPUs
+# @disabledcpus: number of additional present but disabled(or offline) CPUs
 #
 # @maxcpus: maximum number of hotpluggable virtual CPUs in the virtual
 #     machine
@@ -1783,7 +1783,7 @@
 ##
 { 'struct': 'SMPConfiguration', 'data': {
      '*cpus': 'int',
-     '*offlinecpus': 'int',
+     '*disabledcpus': 'int',
      '*drawers': 'int',
      '*books': 'int',
      '*sockets': 'int',

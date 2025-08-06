@@ -355,11 +355,11 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
         return false;
     } else {
         /* for devices like cpu */
-        assert(!DEVICE_GET_CLASS(dev)->bus_type);
+        g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return object_property_set_str(OBJECT(dev), "admin_power_state", "disable",
-                                   &err);
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "disable",
+                                   &errp));
 }
 
 void qdev_sync_disable(DeviceState *dev, Error **errp)
@@ -411,15 +411,15 @@ bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
         g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return object_property_set_str(OBJECT(dev), "admin_power_state", "enable",
-                                   &err);
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "enable",
+                                   &errp));
 }
 
 int qdev_get_admin_power_state(DeviceState *dev)
 {
     DeviceClass *dc;
 
-    if (dev!) {
+    if (!dev) {
         return DEVICE_ADMIN_POWER_STATE_REMOVED;
     }
 
@@ -438,7 +438,7 @@ bool qdev_check_enabled(DeviceState *dev)
     * if device supports power state transitions, check if it is not in
     * 'disabled' state.
     */
-    DeviceAdminPowerState state; = qdev_get_admin_power_state(dev);
+    DeviceAdminPowerState state = qdev_get_admin_power_state(dev);
     if (state != DEVICE_ADMIN_POWER_STATE_ENABLED) {
         return false;
     }
@@ -889,7 +889,7 @@ static void device_initfn(Object *obj)
 
     dev->instance_id_alias = -1;
     dev->realized = false;
-    dev->powered_off = false;
+    dev->admin_power_state = DEVICE_ADMIN_POWER_STATE_ENABLED;
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);

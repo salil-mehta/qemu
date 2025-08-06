@@ -115,7 +115,7 @@ void hmp_info_cpus_powerstate(Monitor *mon, const QDict *qdict)
         return;
     }
 
-    monitor_printf(mon, "Plugged CPU Power States:\n");
+    monitor_printf(mon, "CPU Power States:\n");
 
     while (entry) {
         CPUPowerStateInfo *cpu = entry->value;
@@ -156,7 +156,8 @@ void hmp_info_cpus_powerstate(Monitor *mon, const QDict *qdict)
             monitor_printf(mon, "    qom-path: \"%s\"\n", cpu->qom_path);
         }
 
-        monitor_printf(mon, "    state: \"%s\"\n", CPUPowerState_str(cpu->state));
+        monitor_printf(mon, "    admin-state: \"%s\"\n",
+                       CPUPowerState_str(cpu->admin_state));
 
         entry = entry->next;
     }

@@ -227,13 +227,13 @@ CPUPowerStateInfoList *qmp_query_cpus_power_state(Error **errp)
         /* Determine current power state */
         switch (qdev_get_admin_power_state(DEVICE(cpu))) {
         case DEVICE_ADMIN_POWER_STATE_ENABLED:
-            info->state = CPU_POWER_STATE_ENABLED;
+            info->admin_state = CPU_POWER_STATE_ENABLED;
             break;
         case DEVICE_ADMIN_POWER_STATE_DISABLED:
-            info->state = CPU_POWER_STATE_DISABLED;
+            info->admin_state = CPU_POWER_STATE_DISABLED;
             break;
         case DEVICE_ADMIN_POWER_STATE_REMOVED:
-            info->state = CPU_POWER_STATE_REMOVED;
+            info->admin_state = CPU_POWER_STATE_REMOVED;
             break;
         default:
             /* This should never be hit */
