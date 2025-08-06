@@ -709,15 +709,15 @@ ERST
 
 {
     .name       = "device_set",
-    .args_type  = "device:O,state:s",
-    .params     = "driver[,prop=value][,...] enabled|disabled",
-    .help       = "Enable or disable an existing device administratively",
+    .args_type  = "device:O",
+    .params     = "driver[,prop=value][,...]",
+    .help       = "set/unset existing device property",
     .cmd        = hmp_device_set,
     .command_completion = device_set_completion,
 },
 
 SRST
-``device_set`` *driver[,prop=value][,...]* *admin-state*
+``device_set`` *driver[,prop=value][,...]*
   Change the administrative power state of an existing device.
 
   This command enables or disables a known device (e.g., CPU) using the
@@ -734,7 +734,7 @@ SRST
   Note: The device must already exist (be declared during machine creation).
 
   Example:
-      (qemu) device_set host-arm-cpu,core-id=3 state=disabled
+      (qemu) device_set host-arm-cpu,core-id=3,state=disabled
 ERST
 
     {

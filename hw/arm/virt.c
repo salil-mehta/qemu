@@ -3623,8 +3623,8 @@ virt_machine_device_poweroff_request(PowerStateHandler *handler,
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         virt_cpu_poweroff_request(handler, dev, errp);
     } else {
-        error_setg(errp, "device power-off request for unsupported device"
-                   "type: %s", object_get_typename(OBJECT(dev)));
+        error_setg(errp, "power-off request for unsupported device-type: %s",
+                   object_get_typename(OBJECT(dev)));
     }
 }
 
@@ -3635,7 +3635,7 @@ virt_machine_device_poweroff(PowerStateHandler *handler, DeviceState *dev,
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         virt_cpu_poweroff(handler, dev, errp);
     } else {
-        error_setg(errp, "can't power-off unsupported device type %s",
+        error_setg(errp, "can't power-off unsupported device-type %s",
                    object_get_typename(OBJECT(dev)));
     }
 }
@@ -3647,7 +3647,7 @@ virt_machine_device_poweron(PowerStateHandler *handler, DeviceState *dev,
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         virt_cpu_poweron(handler, dev, errp);
     } else {
-        error_setg(errp, "can't power-on unsupported device type %s",
+        error_setg(errp, "can't power-on unsupported device-type %s",
                    object_get_typename(OBJECT(dev)));
     }
 }

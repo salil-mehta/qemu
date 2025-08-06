@@ -382,9 +382,6 @@ void qdev_sync_disable(DeviceState *dev, Error **errp)
     /* Perform operational shutdown */
     handle_poweroff(handler, dev, errp);
     if (*errp) {
-        error_prepend(errp,
-                      "Failed to power off device '%s' operationally",
-                      object_get_typename(OBJECT(dev)));
         return;
     }
 
@@ -828,9 +825,6 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
             qdev_sync_disable(dev, errp);
         }
         if (*errp) {
-            error_prepend(errp,
-                          "Failed to operationally power off device '%s': ",
-                          dev->id);
             return;
         }
 
@@ -847,9 +841,6 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
          */
         handle_poweron(handler, dev, errp);
         if (*errp) {
-            error_prepend(errp,
-                          "Failed to operationally power on device '%s': ",
-                          dev->id);
             return;
         }
 
@@ -860,8 +851,6 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
                                                dev->instance_id_alias,
                                                dev->alias_required_for_version,
                                                errp) < 0) {
-                error_prepend(errp, "Failed to re-register device '%s' VMSD: ",
-                              dev->id);
                 return;
             }
         }
