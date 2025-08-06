@@ -358,7 +358,7 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
         g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return (object_property_set_str(OBJECT(dev), "admin_power_state", "disable",
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
                                     errp));
 }
 
@@ -411,7 +411,7 @@ bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
         g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
     }
 
-    return (object_property_set_str(OBJECT(dev), "admin_power_state", "enable",
+    return (object_property_set_str(OBJECT(dev), "admin_power_state", "enabled",
                                     errp));
 }
 
