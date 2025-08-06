@@ -359,7 +359,7 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
     }
 
     return (object_property_set_str(OBJECT(dev), "admin_power_state", "disable",
-                                   &errp));
+                                    errp));
 }
 
 void qdev_sync_disable(DeviceState *dev, Error **errp)
@@ -412,7 +412,7 @@ bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
     }
 
     return (object_property_set_str(OBJECT(dev), "admin_power_state", "enable",
-                                   &errp));
+                                    errp));
 }
 
 int qdev_get_admin_power_state(DeviceState *dev)
