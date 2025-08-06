@@ -323,8 +323,9 @@ acpi_get_cpu_status(AcpiCpuOspmState *cpu_st, DeviceState *dev)
     CPUClass *k = CPU_GET_CLASS(dev);
     uint64_t cpu_arch_id = k->get_arch_id(CPU(dev));
     int i;
-
+    warn_report("%s: CPU arch-id %lu\n", __func__, cpu_arch_id);
     for (i = 0; i < cpu_st->dev_count; i++) {
+        warn_report("%s: devs arch-id %lu\n", __func__, cpu_st->devs[i].arch_id);
         if (cpu_arch_id == cpu_st->devs[i].arch_id) {
             return &cpu_st->devs[i];
         }
