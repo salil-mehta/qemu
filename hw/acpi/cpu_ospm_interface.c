@@ -157,7 +157,7 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
     if (cpu_st->selector >= cpu_st->dev_count) {
         return val;
     }
-
+    warn_report("%s: CPU Selector %d\n", __func__, cpu_st->selector);
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_MR_FLAGS_OFFSET_RW:
@@ -201,7 +201,7 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
             return;
         }
     }
-
+    warn_report("%s: CPU Selector %d\n", __func__, cpu_st->selector);
     switch (addr) {
     case ACPI_CPU_MR_SELECTOR_OFFSET_WO: /* current CPU selector */
         cpu_st->selector = data;
