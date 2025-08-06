@@ -231,6 +231,7 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
             trace_acpi_cpuos_if_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
             qdev_sync_disable(dev, &error_fatal);
+            warn_report("%s: after qdev_sync_disable\n", __func__);
         }
         break;
     case ACPI_CPU_MR_CMD_OFFSET_WO:
