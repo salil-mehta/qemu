@@ -693,7 +693,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
         return NULL;
     }
 
-    dev = qdev_find_device(opts, from_json, errp);
+    dev = qdev_find_device(opts, errp);
     if (*errp) {
         error_setg(errp, "unexpected error in finding standby device %s",
                    driver);
@@ -1011,7 +1011,7 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         }
     } else {
         /* Lookup using driver and properties */
-        dev = qdev_find_device(qdict, false, errp);
+        dev = qdev_find_device(qdict, errp);
         if (errp && *errp) {
             error_prepend(errp, "Device lookup via config failed for driver"
                           "'%s': ", driver);
