@@ -341,7 +341,7 @@ void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
     if (!cdev) {
         return;
     }
-
+    warn_report("%s: CPU %d, acpi_send_event\n", __func__, CPU(dev)->cpu_index);
     assert(cdev->cpu);
 
     /*
@@ -362,7 +362,7 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
     if (!cdev) {
         return;
     }
-
+    warn_report("%s: CPU %d, acpi_send_event\n", __func__, CPU(dev)->cpu_index);
     assert(cdev->cpu);
 
     /*
