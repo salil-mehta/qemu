@@ -483,7 +483,7 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
 
         switch (event) {
         case ACPI_GED_CPU_POWERSTATE_EVT:
-#ifdef CONFIG_CPU_OSPM_INTERFACE
+#ifdef CONFIG_ACPI_CPU_OSPM_INTERFACE
             /* initialize regions related to CPU OSPM interface to be used
              * during notification of the power-on,off events to the OSPM
              */
