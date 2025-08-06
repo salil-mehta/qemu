@@ -1114,7 +1114,8 @@
 # This reflects runtime status such as guest online/offline status or
 # suspended state (e.g., CPU halted, in WFI loop, or guest-offlined).
 #
-# Note: This field is read-only. It is derived by QEMU from runtime
+# .. note::
+#    This field is read-only. It is derived by QEMU from runtime information.
 # CPU execution state (or architectural code). It cannot be set
 # by management tools or user commands.
 #
