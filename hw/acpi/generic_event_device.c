@@ -327,7 +327,7 @@ acpi_ged_poweroff_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 {
     AcpiGedState *s = ACPI_GED(adev);
-    warn_report("%s: CPU  %d\n", __func__, CPU(OBJECT(dev))->cpu_index);
+
     acpi_memory_ospm_status(&s->memhp_state, list);
     acpi_cpu_ospm_status(&s->cpuhp_state, list);
     acpi_cpus_ospm_status(&s->cpuospm_state, list);
