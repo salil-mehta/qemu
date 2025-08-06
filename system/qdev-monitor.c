@@ -1238,7 +1238,7 @@ QemuOptsList qemu_deviceset_opts = {
          * no fixed schema; parameters include:
          * - driver=<device-name>
          * - id=<device-id> (optional)
-         * - state=standby|active
+         * - admin-state=enabled|disabled
          * - other optional props for locating the device
          */
         { /* end of list */ }

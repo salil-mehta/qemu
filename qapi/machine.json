@@ -1112,7 +1112,7 @@
 #
 # Guest-visible operational state of the CPU.
 # This reflects runtime status such as guest online/offline status or
-# suspended state (e.g., CPU halted, in WFI loop, or guest-offlined).
+# suspended state (e.g., CPU halted, suspended in WFI loop).
 #
 # .. note::
 #    This field is read-only. It is derived by QEMU from runtime information.
@@ -1181,8 +1181,8 @@
 # @query-cpus-power-state:
 #
 # Returns all CPUs and their power state info, combining host policy and
-# runtime guest status. This is useful for debugging vCPU hotplug, standby,
-# suspend/resume, admin power states or offline flows.
+# runtime guest status. This is useful for debugging vCPU hotplug,
+# suspend/resume, admin power states or offline state flows.
 #
 # Returns: a list of @CPUPowerStateInfo
 ##

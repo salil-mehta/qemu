@@ -717,7 +717,7 @@ ERST
 },
 
 SRST
-``device_set`` *driver[,prop=value][,...]* *state*
+``device_set`` *driver[,prop=value][,...]* *admin-state*
   Change the administrative power state of an existing device.
 
   This command enables or disables a known device (e.g., CPU) using the

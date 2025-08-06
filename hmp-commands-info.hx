@@ -775,14 +775,28 @@ ERST
     .name       = "cpus-powerstate",
     .args_type  = "",
     .params     = "",
-    .help       = "Show information about CPU logical power states (On, Standby, Off)",
+    .help       = "Show administrative and operational CPU states",
     .cmd        = hmp_info_cpus_powerstate,
     .flags      = "p",
 },
 
 SRST
   ``info cpus-powerstate``
-    Show information about CPU logical power states such as ``On``, ``Standby``, or ``Off``.
+    Display administrative (policy) and operational (runtime) power
+    states for each virtual CPU.
+
+    Administrative states:
+      - ``Enabled``  : CPU is available to the guest
+      - ``Disabled`` : CPU is present but administratively blocked
+      - ``Removed``  : CPU is not present (hidden from the guest)
+
+    Example Operational states(Optional):
+      - ``On``       : CPU is powered on and executing
+      - ``Standby``  : CPU is idle/low-power and can resume on an event
+      - ``Off``      : CPU is powered off or guest-offlined
+
+    The administrative state constrains which operational states are
+    possible.
 
 ERST
 
