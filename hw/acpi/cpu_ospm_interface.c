@@ -310,6 +310,8 @@ void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
     for (i = 0; i < id_list->len; i++) {
         state->devs[i].cpu =  CPU(id_list->cpus[i].cpu);
         state->devs[i].arch_id = id_list->cpus[i].arch_id;
+        warn_report("%s: state->dev_count %u, CPU arch-id %lu\n", __func__,
+                state->dev_count, state->devs[i].arch_id);
     }
     memory_region_init_io(&state->ctrl_reg, owner, &cpu_common_mr_ops, state,
                           "ACPI CPU OSPM State Interface Memory Region",
