@@ -57,17 +57,6 @@ typedef void (*powerstate_fn)(PowerStateHandler *handler, DeviceState *dev,
  * @poweron: Callback used to transition the device from a powered-off state
  *           to active. This may include reinitializing internal state and
  *           notifying the guest that the device has resumed operation.
- *
- * @standby_request: Optional callback to notify that the device is preparing
- *                   to enter standby. May inform the guest kernel or begin
- *                   async standby transition.
- *
- * @standby: Callback used to place the device into standby mode. The
- *                 device remains realized but enters a paused or low-power
- *                 state.
- *
- * @resume: Callback used to resume the device from standby to active.
- *          Assumes the device was realized but previously placed in standby.
  */
 struct PowerStateHandlerClass {
     /* <private> */
@@ -77,9 +66,6 @@ struct PowerStateHandlerClass {
     powerstate_fn request_poweroff;
     powerstate_fn poweroff;
     powerstate_fn poweron;
-    powerstate_fn standby_request;
-    powerstate_fn standby;
-    powerstate_fn resume;
 };
 
 PowerStateHandler *powerstate_handler(DeviceState *dev);
@@ -91,14 +77,5 @@ void handle_poweroff(PowerStateHandler *handler, DeviceState *dev,
                      Error **errp);
 
 void handle_poweron(PowerStateHandler *handler, DeviceState *dev,
-                    Error **errp);
-
-void handle_standby_request(PowerStateHandler *handler, DeviceState *dev,
-                        Error **errp);
-
-void handle_standby(PowerStateHandler *handler, DeviceState *dev,
-                     Error **errp);
-
-void handle_resume(PowerStateHandler *handler, DeviceState *dev,
                     Error **errp);
 #endif /* POWERSTATE_H */

@@ -125,8 +125,8 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
     /* Retrieve the cpu we are powering up */
     target_cpu_state = arm_get_cpu_by_id(cpuid);
 
-    if (!target_cpu_state ||
-        !qdev_check_active(DEVICE(target_cpu_state))) {
+    /* Policy check: verify 'administrative' power state of target CPU */
+    if (!target_cpu_state || !qdev_check_enabled(DEVICE(target_cpu_state))) {
         /*
          * The cpu is not plugged in or disabled. We should return appropriate
          * value as introduced in DEN0022E PSCI 1.2 issue E

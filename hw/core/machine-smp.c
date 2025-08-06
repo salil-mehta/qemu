@@ -87,7 +87,7 @@ void machine_parse_smp_config(MachineState *ms,
 {
     MachineClass *mc = MACHINE_GET_CLASS(ms);
     unsigned cpus    = config->has_cpus ? config->cpus : 0;
-    unsigned offlinecpus = config->has_offlinecpus ? config->offlinecpus : 0;
+    unsigned disabledcpus = config->has_disabledcpus ? config->disabledcpus : 0;
     unsigned drawers = config->has_drawers ? config->drawers : 0;
     unsigned books   = config->has_books ? config->books : 0;
     unsigned sockets = config->has_sockets ? config->sockets : 0;
@@ -170,10 +170,10 @@ void machine_parse_smp_config(MachineState *ms,
 
         maxcpus = drawers * books * sockets * dies * clusters *
                     modules * cores * threads;
-        cpus = maxcpus - offlinecpus;
+        cpus = maxcpus - disabledcpus;
     } else {
-        maxcpus = maxcpus > 0 ? maxcpus : cpus + offlinecpus;
-        cpus = cpus > 0 ? cpus : maxcpus - offlinecpus;
+        maxcpus = maxcpus > 0 ? maxcpus : cpus + disabledcpus;
+        cpus = cpus > 0 ? cpus : maxcpus - disabledcpus;
 
         if (mc->smp_props.prefer_sockets) {
             /* prefer sockets over cores before 6.2 */
@@ -215,7 +215,7 @@ void machine_parse_smp_config(MachineState *ms,
     }
 
     ms->smp.cpus = cpus;
-    ms->smp.offlinecpus = offlinecpus;
+    ms->smp.disabledcpus = disabledcpus;
     ms->smp.drawers = drawers;
     ms->smp.books = books;
     ms->smp.sockets = sockets;
@@ -240,12 +240,12 @@ void machine_parse_smp_config(MachineState *ms,
         return;
     }
 
-    if (maxcpus < (cpus + offlinecpus)) {
+    if (maxcpus < (cpus + disabledcpus)) {
         g_autofree char *topo_msg = cpu_hierarchy_to_string(ms);
         error_setg(errp, "Invalid CPU topology: "
-                   "maxcpus must be equal to or greater than smp[+offlinecpus]:"
+                   "maxcpus must be equal to or greater than smp[+disabledcpus]:"
                    "%s == maxcpus (%u) < smp_cpus (%u) [+ offline cpus (%u)]",
-                   topo_msg, maxcpus, cpus, offlinecpus);
+                   topo_msg, maxcpus, cpus, disabledcpus);
         return;
     }
 

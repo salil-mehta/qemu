@@ -707,18 +707,34 @@ SRST
   or a QOM object path.
 ERST
 
-    {
-        .name       = "device_set",
-        .args_type  = "device:O,state:s",
-        .params     = "driver[,prop=value][,...] active|standby",
-        .help       = "set device state, Default is active",
-        .cmd        = hmp_device_set,
-        .command_completion = device_set_completion,
-    },
+{
+    .name       = "device_set",
+    .args_type  = "device:O,state:s",
+    .params     = "driver[,prop=value][,...] enabled|disabled",
+    .help       = "Enable or disable an existing device administratively",
+    .cmd        = hmp_device_set,
+    .command_completion = device_set_completion,
+},
 
 SRST
-``device_set`` *config* *state*
-  set device state to standby or active mode.
+``device_set`` *driver[,prop=value][,...]* *state*
+  Change the administrative power state of an existing device.
+
+  This command enables or disables a known device (e.g., CPU) using the
+  "device-set" interface. It does not hotplug or add a new device.
+
+  Depending on platform support (e.g., PSCI or ACPI), this may trigger
+  corresponding operational changes — such as powering down a CPU or
+  transitioning it to active use.
+
+  Administrative state:
+    * *enabled*  — Allows the guest to use the device (e.g., CPU_ON)
+    * *disabled* — Prevents guest use; device is powered off (e.g., CPU_OFF)
+
+  Note: The device must already exist (be declared during machine creation).
+
+  Example:
+      (qemu) device_set host-arm-cpu,core-id=3 state=disabled
 ERST
 
     {

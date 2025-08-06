@@ -133,21 +133,21 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
     CPUState *cs = gcs->cpu;
 
     /*
-     * if the destination QEMU has more *active* vCPUs than the source, we can
+     * if the destination QEMU has more *enabled* vCPUs than the source, we can
      * either fail the migration or override the destination's vCPU config to
      * match the source. Since it is safe to override the `CPUState` of extra
-     * *active* vCPUs at the destination, we adopt the latter approach as a
+     * *enabled* vCPUs at the destination, we adopt the latter approach as a
      * mitigation for the mismatch.
      */
-    if (qdev_check_active(DEVICE(cs)) &&
+    if (qdev_check_enabled(DEVICE(cs)) &&
         !gicv3_gicc_accessible(OBJECT(gic), cs->cpu_index)) {
         warn_report("CPU %d is active, but its incoming GICC state is marked"
                     "inaccessible", cs->cpu_index);
         warn_report("Putting CPU %d into standby to match the migrated state",
                     cs->cpu_index);
 
-        /* 'power-off' this vCPU to reflect the incoming state */
-        qdev_poweroff(DEVICE(cs), NULL, &error_fatal);
+        /* 'disable' this vCPU to reflect the incoming state */
+        qdev_disable(DEVICE(cs), NULL, &error_fatal);
     }
 
     return 0;
@@ -489,7 +489,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
          * either accessible or inaccessible based on the power state of the
          * associated `CPUState` vCPU.
          */
-        s->cpu[i].gicc_accessible = qdev_check_active(DEVICE(cpu));
+        s->cpu[i].gicc_accessible = qdev_check_enabled(DEVICE(cpu));
         s->cpu[i].cpu = cpu;
         s->cpu[i].gic = s;
         /* Store GICv3CPUState in CPUARMState gicv3state pointer */

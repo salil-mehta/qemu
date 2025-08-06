@@ -56,34 +56,6 @@ void handle_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     }
 }
 
-void handle_standby_request(PowerStateHandler *handler, DeviceState *dev,
-                                Error **errp)
-{
-    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
-
-    if (pshc->standby_request) {
-        pshc->standby_request(handler, dev, errp);
-    }
-}
-
-void handle_standby(PowerStateHandler *handler, DeviceState *dev, Error **errp)
-{
-    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
-
-    if (pshc->standby) {
-        pshc->standby(handler, dev, errp);
-    }
-}
-
-void handle_resume(PowerStateHandler *handler, DeviceState *dev, Error **errp)
-{
-    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
-
-    if (pshc->resume) {
-        pshc->resume(handler, dev, errp);
-    }
-}
-
 static const TypeInfo powerstate_handler_info = {
     .name          = TYPE_POWERSTATE_HANDLER,
     .parent        = TYPE_INTERFACE,

@@ -162,8 +162,8 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_MR_FLAGS_OFFSET_RW:
-        val |= qdev_check_active(DEVICE(cdev->cpu)) ?
-                                 ACPI_CPU_MR_FLAGS_BIT_ENABLED : 0;
+        val |= qdev_check_enabled(DEVICE(cdev->cpu)) ?
+                                  ACPI_CPU_MR_FLAGS_BIT_ENABLED : 0;
         val |= cdev->devchk_pending ? ACPI_CPU_MR_FLAGS_BIT_DEVCHK : 0;
         val |= cdev->ejrqst_pending ? ACPI_CPU_MR_FLAGS_BIT_EJECTRQ : 0;
         trace_acpi_cpuos_if_read_flags(cpu_st->selector, val);
@@ -227,11 +227,11 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
             }
             /*
              * OSPM has returned with eject. Hence, it is now safe to put the
-             * cpu device on powered-off state
+             * cpu device on powered-off state.
              */
             trace_acpi_cpuos_if_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            qdev_poweroff_now(dev, &error_fatal);
+            qdev_sync_disable(dev, &error_fatal);
         }
         break;
     case ACPI_CPU_MR_CMD_OFFSET_WO:

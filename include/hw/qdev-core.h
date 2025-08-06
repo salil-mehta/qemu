@@ -152,7 +152,7 @@ struct DeviceClass {
      */
     bool user_creatable;
     bool hotpluggable;
-    bool can_change_power_state;
+    bool admin_power_state_supported;
 
     /* callbacks */
     /**
@@ -210,12 +210,55 @@ typedef QLIST_HEAD(, NamedGPIOList) NamedGPIOListHead;
 typedef QLIST_HEAD(, NamedClockList) NamedClockListHead;
 typedef QLIST_HEAD(, BusState) BusStateHead;
 
-typedef enum DevicePowerState {
-    DEVICE_POWER_STATE_ON = 0, /* Default active state */
-    DEVICE_POWER_STATE_STANDBY, /* Low-power, context-retained */
-    DEVICE_POWER_STATE_OFF, /* Fully powered down */
-    DEVICE_POWER_STATE__MAX,
-} DevicePowerState;
+/**
+ * enum DeviceAdminPowerState - Administrative control states for a device
+ *
+ * This enum defines abstract administrative states used by QEMU to enable,
+ * disable, or logically remove a device from the virtual machine. These
+ * states reflect administrative control over a device's power availability
+ * and presence in the system. These administrative states are distinct from
+ * runtime operational power states (e.g., PSCI states for ARM CPUs). They
+ * represent administrative *policy* rather than physical, electrical, or
+ * functional state.
+ *
+ * Administrative state is managed externally—via QMP, ACPI, firmware, or
+ * other host-side policy agents—and acts as a gating policy that determines
+ * whether guest software is permitted to interact with the device. Most
+ * devices default to the ENABLED state unless explicitly disabled or removed.
+ *
+ * Changing a device’s administrative state may directly or indirectly affect
+ * its operational behavior. For example, a DISABLED device may reject guest
+ * attempts to power it on or transition it out of a suspended state. Not all
+ * devices support dynamic transitions between administrative states.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_ENABLED:
+ *     The device is administratively enabled (i.e., logically present and
+ *     permitted to operate). Guest software may change its operational state
+ *     (e.g., activate, deactivate, suspend) within allowed architectural
+ *     semantics. This is the default state for most devices unless explicitly
+ *     disabled or unplugged.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_DISABLED:
+ *     The device is administratively disabled. It remains logically present
+ *     but is blocked from functional operation. Guest-initiated transitions
+ *     are either suppressed or ignored. This is typically used to enforce
+ *     shutdown, deny execution, or offline the device without removing it.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_REMOVED:
+ *     The device has been logically removed (e.g., via hot-unplug). It is no
+ *     longer considered present or visible to the guest. This state exists
+ *     for representational or transitional purposes only. In most cases,
+ *     once removed, the corresponding DeviceState object is deleted and
+ *     no longer tracked. This concept may not apply to devices like ARM CPUs
+ *     where unplug is not meaningful, but is valid for platforms like x86
+ *     CPUs or PCI hotplug devices that support CPU/device hot-removal.
+ */
+typedef enum DeviceAdminPowerState {
+    DEVICE_ADMIN_POWER_STATE_ENABLED = 0,
+    DEVICE_ADMIN_POWER_STATE_DISABLED,
+    DEVICE_ADMIN_POWER_STATE_REMOVED,
+    DEVICE_ADMIN_POWER_STATE__MAX
+} DeviceAdminPowerState;
 
 /**
  * struct DeviceState - common device state, accessed with qdev helpers
@@ -241,9 +284,9 @@ struct DeviceState {
      */
     bool realized;
     /**
-     * @power_state: is device powered off, on or in standby?
+     * @admin_power_state: device administrative power state
      */
-    DevicePowerState power_state;
+    DeviceAdminPowerState admin_power_state;
     /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
@@ -534,78 +577,78 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
- * qdev_poweroff_now - Immediately transition the device into power-off state
- * @dev:   The device to be powered off
+ * qdev_disable - Initiate administrative disablement and power-off of device
+ * @dev:   The device to be administratively powered off
+ * @bus:   The bus on which the device resides (may be NULL for CPUs)
  * @errp:  Pointer to a location where an error can be reported
  *
- * This function forcefully powers off the specified device by directly invoking
- * the associated PowerStateHandler. It bypasses any asynchronous mechanism such
- * as ACPI _EJx-based signaling, assuming that the device is already safe to
- * remove or shut down. This is typically used after OSPM has acknowledged an
- * eject request (e.g., Notify(..., 0x03)) and issued a formal eject command.
+ * This function initiates an administrative transition of the device into a
+ * DISABLED state. This may trigger a graceful shutdown process depending on
+ * platform capabilities. For ACPI platforms, this typically involves notifying
+ * the guest via events such as Notify(..., 0x03) and executing _EJx.
  *
- * This call is only valid after the device has been realized. On failure, the
- * @errp will be set with the relevant error message.
- */
-void qdev_poweroff_now(DeviceState *dev, Error **errp);
-
-/**
- * qdev_poweron - Transition the device into power-on state
- * @dev:   The device to be powered on
- * @bus:   The bus on which the device is connected (may be NULL for CPUs)
- * @errp:  Pointer to a location where an error can be reported
- *
- * This function triggers the power-on operation for a given device using the
- * registered PowerStateHandler. It may also re-register the device with the
- * migration system, depending on its previous power state and the platform’s
- * migration policy. The device must already be realized and in OFF or STANDBY
- * state before calling this function.
- *
- * Returns true if the operation succeeds; false if an error occurs, in which
- * case @errp will be set accordingly.
- */
-bool qdev_poweron(DeviceState *dev, BusState *bus, Error **errp);
-
-/**
- * qdev_poweroff - Initiate power-off transition for the device
- * @dev:   The device to be powered off
- * @bus:   The bus on which the device resides (may be NULL for devs like CPUs)
- * @errp:  Pointer to a location where an error can be reported
- *
- * This function begins the power-off process for the specified device.Depending
- * on the device type and platform configuration, this may be handled
- * synchronously or may involve asynchronous mechanisms such as notifying the
- * operating system through ACPI events. It is expected that the device has
- * already been realized before invoking this operation.
+ * Once completed, the device's operational power is turned off and it is
+ * marked as administratively DISABLED. Further guest usage is blocked until
+ * re-enabled by host-side policy.
  *
  * Returns true on success; false if an error occurs, with @errp populated.
  */
-bool qdev_poweroff(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
- * qdev_check_active - Determine whether the device is currently active
+ * qdev_sync_disable - Force immediate power-off and administrative disable
+ * @dev:   The device to be powered off and administratively disabled
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function performs a synchronous power-off of the device and marks it
+ * as administratively DISABLED. It assumes that prior graceful handling (e.g.,
+ * ACPI _EJx) has already been completed, or that asynchronous mechanisms are
+ * unsupported.
+ *
+ * After execution, the device remains visible to the guest (e.g. via ACPI),
+ * but cannot be brought back online unless explicitly re-enabled via admin
+ * policy. This function also removes the device from the migration stream.
+ */
+void qdev_sync_disable(DeviceState *dev, Error **errp);
+
+/**
+ * qdev_enable - Power on and administratively enable a device
+ * @dev:   The device to be powered on and administratively enabled
+ * @bus:   The bus on which the device is connected (may be NULL for CPUs)
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function performs both administrative and operational power-on of
+ * the specified device. It transitions the device into ENABLED state and
+ * restores runtime availability. If applicable, the device is also re-added
+ * to the migration stream.
+ *
+ * Returns true if the operation succeeds; false otherwise, with @errp set.
+ */
+bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp);
+
+/**
+ * qdev_check_enabled - Check if a device is administratively enabled
  * @dev:  The device to check
  *
- * This function checks the current operational state of the device. A device is
- * considered "active" if it is not powered off or in standby state. The check
- * uses the internal power state field and associated device properties to
- * determine activity.
+ * This function returns whether the device is currently in administrative
+ * ENABLED state. It does not reflect runtime operational power state, but
+ * rather the host policy on whether the guest may interact with the device.
  *
- * Returns true if the device is active (powered ON); false otherwise.
+ * Returns true if the device is administratively enabled; false otherwise.
  */
-bool qdev_check_active(DeviceState *dev);
+bool qdev_check_enabled(DeviceState *dev);
 
 /**
- * qdev_get_power_state - Retrieve current power state of the device
- * @dev:  The device whose power state is to be queried
+ * qdev_get_admin_power_state - Query administrative power state of a device
+ * @dev:  The device whose state is being queried
  *
- * Returns the current power state of the device as stored in its internal state
- * field, typically mapped from the "power-state" property. The result is one of
- * the values from the DevicePowerState enum: ON, OFF, or STANDBY.
+ * Returns the current administrative power state (ENABLED or DISABLED),
+ * as stored in the device's internal admin state field. This reflects
+ * host-level policy—not the operational runtime state seen by the guest.
  *
- * Returns an integer value corresponding to a DevicePowerState enum constant.
+ * Returns an integer from the DeviceAdminPowerState enum.
  */
-int qdev_get_power_state(DeviceState *dev);
+int qdev_get_admin_power_state(DeviceState *dev);
 
 /**
  * qdev_unrealize: Unrealize a device

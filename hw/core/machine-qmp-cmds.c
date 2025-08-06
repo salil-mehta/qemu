@@ -225,15 +225,15 @@ CPUPowerStateInfoList *qmp_query_cpus_power_state(Error **errp)
         info->qom_path = object_get_canonical_path(OBJECT(cpu));
 
         /* Determine current power state */
-        switch (qdev_get_power_state(DEVICE(cpu))) {
-        case DEVICE_POWER_STATE_ON:
-            info->state = CPU_POWER_STATE_ON;
+        switch (qdev_get_admin_power_state(DEVICE(cpu))) {
+        case DEVICE_ADMIN_POWER_STATE_ENABLED:
+            info->state = CPU_POWER_STATE_ENABLED;
             break;
-        case DEVICE_POWER_STATE_STANDBY:
-            info->state = CPU_POWER_STATE_STANDBY;
+        case DEVICE_ADMIN_POWER_STATE_DISABLED:
+            info->state = CPU_POWER_STATE_DISABLED;
             break;
-        case DEVICE_POWER_STATE_OFF:
-            info->state = CPU_POWER_STATE_OFF;
+        case DEVICE_ADMIN_POWER_STATE_REMOVED:
+            info->state = CPU_POWER_STATE_REMOVED;
             break;
         default:
             /* This should never be hit */

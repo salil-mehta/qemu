@@ -1961,13 +1961,6 @@ virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
         return;
     }
 
-    if (!dev->realized) {
-        /* changing the pre-realized default state of device */
-        qatomic_set(&dev->power_state, DEVICE_POWER_STATE_OFF);
-        smp_wmb();
-        return;
-    }
-
     /*
      * powering-off a CPU triggers an Eject Request (Notify(..., 0x03))
      * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
@@ -2563,7 +2556,7 @@ static void machvirt_init(MachineState *machine)
 
     /* salil: revisit again */
     if (mc->has_power_manageable_cpus) {
-        max_cpus = smp_cpus + machine->smp.offlinecpus;
+        max_cpus = smp_cpus + machine->smp.disabledcpus;
         machine->smp.max_cpus = max_cpus;
     }
     if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
@@ -2714,8 +2707,8 @@ static void machvirt_init(MachineState *machine)
                 kvm_arm_create_host_vcpu(ARM_CPU(cs));
             }
 
-            /* mark this vCPU to be in the 'powered-off' state in QOM */
-            qdev_poweroff(DEVICE(cpuobj), NULL, &error_fatal);
+            /* mark this vCPU to be administratively 'disabled' in QOM */
+            qdev_disable(DEVICE(cpuobj), NULL, &error_fatal);
         }
 
         cpu_slot = virt_get_possible_cpu_arch_id(n);
