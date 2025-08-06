@@ -1854,9 +1854,8 @@ static DeviceState *
 virt_find_device(DeviceListener *listener, const QDict *opts, Error **errp)
 {
     const char *typename;
-    DeviceState *dev;
 
-    assert(opts);
+    g_assert(opts);
 
     typename = qdict_get_try_str(opts, "driver");
     if (!typename)
@@ -1944,7 +1943,7 @@ fail_accessible:
 }
 
 static void
-virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
+virt_cpu_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
                         Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
@@ -1966,7 +1965,7 @@ virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
      * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
      */
     pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
-    pshc->request_poweroff(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+    pshc->poweroff_request(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
     if (*errp) {
         error_setg(errp, "request failed to power-off CPU %d", cs->cpu_index);
         return;
@@ -3617,12 +3616,12 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
 }
 
 static void
-virt_machine_device_request_poweroff(PowerStateHandler *handler,
+virt_machine_device_poweroff_request(PowerStateHandler *handler,
                                      DeviceState *dev,
                                      Error **errp)
 {
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        virt_cpu_request_poweroff(handler, dev, errp);
+        virt_cpu_poweroff_request(handler, dev, errp);
     } else {
         error_setg(errp, "device power-off request for unsupported device"
                    "type: %s", object_get_typename(OBJECT(dev)));
@@ -3648,7 +3647,7 @@ virt_machine_device_poweron(PowerStateHandler *handler, DeviceState *dev,
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
         virt_cpu_poweron(handler, dev, errp);
     } else {
-        error_setg(errp, "can't power-on unsupported device type %s"
+        error_setg(errp, "can't power-on unsupported device type %s",
                    object_get_typename(OBJECT(dev)));
     }
 }
@@ -3808,7 +3807,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
     assert(!mc->get_powerstate_handler);
     mc->has_power_manageable_cpus = true;
     mc->get_powerstate_handler = virt_machine_powerstate_handler;
-    pshc->request_poweroff = virt_machine_device_request_poweroff;
+    pshc->poweroff_request = virt_machine_device_poweroff_request;
     pshc->poweroff = virt_machine_device_poweroff;
     pshc->poweron = virt_machine_device_poweron;
 
