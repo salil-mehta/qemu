@@ -483,7 +483,6 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
 
         switch (event) {
         case ACPI_GED_CPU_POWERSTATE_EVT:
-#ifdef CONFIG_ACPI_CPU_OSPM_INTERFACE
             /* initialize regions related to CPU OSPM interface to be used
              * during notification of the power-on,off events to the OSPM
              */
@@ -494,7 +493,6 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
             acpi_cpu_ospm_state_interface_init(&s->container_cpups, OBJECT(dev),
                                                &s->cpups_state, 0);
             break;
-#endif
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */
             memory_region_init(&s->container_cpuhp, OBJECT(dev),
