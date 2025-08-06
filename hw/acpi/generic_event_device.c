@@ -354,7 +354,7 @@ static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
         warn_report("GED: Unsupported event %d. No irq injected", ev);
         return;
     }
-
+    warn_report("%s: Sending Event %u to OSPM\n", __func__, sel);
     /*
      * Set the GED selector field to communicate the event type.
      * This will be read by GED aml code to select the appropriate
