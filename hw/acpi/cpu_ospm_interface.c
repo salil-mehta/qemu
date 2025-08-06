@@ -336,7 +336,7 @@ void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
                               Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
-
+    warn_report("%s: CPU %d\n", __func__, CPU(dev)->cpu_index);
     cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
@@ -357,7 +357,7 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
                                Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
-
+    warn_report("%s: CPU %d\n", __func__, CPU(dev)->cpu_index);
     cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
@@ -377,7 +377,7 @@ void
 acpi_cpu_eject_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev, Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
-
+    warn_report("%s: CPU %d\n", __func__, CPU(dev)->cpu_index);
     cdev = acpi_get_cpu_status(cpu_st, dev);
     if (!cdev) {
         return;
