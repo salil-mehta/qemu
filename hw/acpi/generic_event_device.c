@@ -290,7 +290,8 @@ acpi_ged_poweron_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     AcpiGedState *s = ACPI_GED(handler);
     warn_report("%s: CPU  %d\n", __func__, CPU(OBJECT(dev))->cpu_index);
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_device_check_cb(&s->cpuospm_state, dev, errp);
+        acpi_cpu_device_check_cb(&s->cpuospm_state, dev,
+                                  ACPI_CPU_POWERSTATE_STATUS, errp);
     } else {
         error_setg(errp, "acpi: can't power-on unsupported device type %s",
                    object_get_typename(OBJECT(dev)));
@@ -298,13 +299,14 @@ acpi_ged_poweron_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 }
 
 static void
-acpi_ged_request_poweroff_cb(PowerStateHandler *handler, DeviceState *dev,
+acpi_ged_poweroff_request_cb(PowerStateHandler *handler, DeviceState *dev,
                              Error **errp)
 {
     AcpiGedState *s = ACPI_GED(handler);
     warn_report("%s: CPU  %d\n", __func__, CPU(OBJECT(dev))->cpu_index);
     if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_eject_request_cb(&s->cpuospm_state, dev, errp);
+        acpi_cpu_eject_request_cb(&s->cpuospm_state, dev,
+                                  ACPI_CPU_POWERSTATE_STATUS, errp);
     } else {
         error_setg(errp, "acpi: power-off request for unsupported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
@@ -472,6 +474,7 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
     uint32_t ged_events;
     int i;
 
+    s->cpuospm_state.acpi_dev = dev;
     ged_events = ctpop32(s->ged_event_bitmap);
 
     for (i = 0; i < ARRAY_SIZE(ged_supported_events) && ged_events; i++) {
@@ -491,7 +494,7 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
                                ACPI_CPU_OSPM_IF_REG_LEN);
             sysbus_init_mmio(sbd, &s->container_cpups);
             acpi_cpu_ospm_state_interface_init(&s->container_cpups, OBJECT(dev),
-                                               &s->cpups_state, 0);
+                                               &s->cpuospm_state, 0);
             break;
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */
@@ -560,7 +563,7 @@ static void acpi_ged_class_init(ObjectClass *class, void *data)
     hc->unplug = acpi_ged_unplug_cb;
 
     pshc->poweron = acpi_ged_poweron_cb;
-    pshc->poweroff_request = acpi_ged_request_poweroff_cb;
+    pshc->poweroff_request = acpi_ged_poweroff_request_cb;
     pshc->poweroff = acpi_ged_poweroff_cb;
 
     adevc->ospm_status = acpi_ged_ospm_status;

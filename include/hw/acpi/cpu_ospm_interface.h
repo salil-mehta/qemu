@@ -42,6 +42,7 @@ typedef struct  {
 } AcpiCpuOspmStateStatus;
 
 typedef struct AcpiCpuOspmState {
+    DeviceState *acpi_dev;
     MemoryRegion ctrl_reg;
     uint32_t selector;
     uint8_t command;
@@ -50,10 +51,10 @@ typedef struct AcpiCpuOspmState {
 } AcpiCpuOspmState;
 
 void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
-                              Error **errp);
+                              uint32_t event_st, Error **errp);
 
 void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
-                               Error **errp);
+                               uint32_t event_st, Error **errp);
 
 void acpi_cpu_eject_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
                        Error **errp);

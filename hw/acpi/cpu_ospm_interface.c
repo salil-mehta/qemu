@@ -337,7 +337,7 @@ acpi_get_cpu_status(AcpiCpuOspmState *cpu_st, DeviceState *dev)
 }
 
 void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
-                              Error **errp)
+                              uint32_t event_st, Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
     warn_report("%s: CPU %d\n", __func__, CPU(dev)->cpu_index);
@@ -354,11 +354,11 @@ void acpi_cpu_device_check_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
      * in OSPM evaluating the ACPI _EVT method and scan of cpus
      */
     cdev->devchk_pending = true;
-    acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
+    acpi_send_event(cpu_st->acpi_dev, event_st);
 }
 
 void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
-                               Error **errp)
+                              uint32_t event_st, Error **errp)
 {
     AcpiCpuOspmStateStatus *cdev;
     warn_report("%s: CPU %d\n", __func__, CPU(dev)->cpu_index);
@@ -374,7 +374,7 @@ void acpi_cpu_eject_request_cb(AcpiCpuOspmState *cpu_st, DeviceState *dev,
      * mark 'eject-request' event pending for this cpu. (graceful shutdown)
      */
     cdev->ejrqst_pending = true;
-    acpi_send_event(dev, ACPI_CPU_POWERSTATE_STATUS);
+    acpi_send_event(cpu_st->acpi_dev, event_st);
 }
 
 void
