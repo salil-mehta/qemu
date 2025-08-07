@@ -111,10 +111,8 @@ void build_ged_aml(Aml *table, const char *name, DeviceState *acpi_ged,
                                              MEMORY_SLOT_SCAN_METHOD));
                 break;
             case ACPI_GED_CPU_POWERSTATE_EVT:
-#ifdef CONFIG_CPU_OSPM_INTERFACE
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUPS_SCAN_METHOD));
                 break;
-#endif
             case ACPI_GED_CPU_HOTPLUG_EVT:
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUHP_SCAN_METHOD));
                 break;
