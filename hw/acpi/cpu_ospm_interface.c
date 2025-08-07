@@ -67,6 +67,13 @@
 #define ACPI_CPU_MR_RES_CMD_SIZE   7 /* Reserved padding */
 #define ACPI_CPU_MR_CMD_DATA_SIZE  8 /* Read-write (QWord access) */
 
+#define ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE \
+    MAX_CONST(ACPI_CPU_MR_SELECTOR_SIZE, \
+    MAX_CONST(ACPI_CPU_MR_CMD_SIZE, \
+    MAX_CONST(ACPI_CPU_MR_FLAGS_SIZE, \
+    MAX_CONST(ACPI_CPU_MR_CMD_DATA_SIZE, \
+        ACPI_CPU_MR_RES_CMD_SIZE))))
+
 /* Validate layout against exported total length */
 _Static_assert(ACPI_CPU_OSPM_IF_REG_LEN ==
                (ACPI_CPU_MR_SELECTOR_SIZE +
@@ -104,6 +111,23 @@ _Static_assert(ACPI_CPU_OSPM_IF_REG_LEN ==
     (ACPI_CPU_MR_CMD_OFFSET_WO + \
      ACPI_CPU_MR_CMD_SIZE + \
      ACPI_CPU_MR_RES_CMD_SIZE)
+
+/* ensure all offsets are at their natural size alignment boundaries */
+#define STATIC_ASSERT_FIELD_ALIGNMENT(offset, type, field_name)               \
+    _Static_assert((offset) % sizeof(type) == 0,                              \
+                   field_name " is not aligned to its natural boundary")
+
+STATIC_ASSERT_FIELD_ALIGNMENT(ACPI_CPU_MR_SELECTOR_OFFSET_WO,
+                              uint32_t, "Selector");
+
+STATIC_ASSERT_FIELD_ALIGNMENT(ACPI_CPU_MR_FLAGS_OFFSET_RW,
+                              uint8_t, "Flags");
+
+STATIC_ASSERT_FIELD_ALIGNMENT(ACPI_CPU_MR_CMD_OFFSET_WO,
+                              uint8_t, "Command");
+
+STATIC_ASSERT_FIELD_ALIGNMENT(ACPI_CPU_MR_CMD_DATA_OFFSET_RW,
+                              uint64_t, "Command Data");
 
 /* Flag bit positions (used within 'flags' subfield) */
 #define ACPI_CPU_MR_FLAGS_BIT_ENABLED BIT(ACPI_CPU_FLAGS_USED_BITS - 4)
@@ -420,7 +444,7 @@ static const MemoryRegionOps cpu_common_mr_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 1,
-        .max_access_size = 4,
+        .max_access_size = ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE,
     },
 };
 
@@ -619,12 +643,18 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         /* Flag::Eject Bit(WO) - OSPM evals _EJx, initiates CPU Eject in Qemu*/
         aml_append(field, aml_named_field(CPU_EJECT_F, 1));
         /* Flag::Bit(5)-Bit(7) - Reserve left over bits of 1 byte space */
+        if (ACPI_CPU_MR_RES_FLAG_BITS) {
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAG_BITS));
+        }
         /* Reserved padding for 4 byte alignment & future extension */
+        if (ACPI_CPU_MR_RES_FLAGS_SIZE_BITS) {
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAGS_SIZE_BITS));
+        }
         aml_append(field, aml_named_field(CPU_COMMAND,
                                           ACPI_CPU_MR_CMD_SIZE_BITS));
+        if (ACPI_CPU_MR_RES_CMD_SIZE_BITS) {
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_CMD_SIZE_BITS));
+        }
         aml_append(field, aml_reserved_field(ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
         aml_append(cpu_ctrl_dev, field);
 
