@@ -608,6 +608,24 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
 
     cpu_ctrl_dev = aml_device("%s", res_path);
     {
+    /*
+     * Macros to declare AML fields for ACPI MMIO (MemoryRegion-backed) interfaces.
+     * They automatically skip zero-length fields to avoid invalid AML generation.
+     */
+    #define AML_APPEND_MR_RESERVED_FIELD(mr_field, size_bits)       \
+        do {                                                        \
+            if ((size_bits) != 0) {                                 \
+                aml_append((mr_field), aml_reserved_field(size_bits)); \
+            }                                                       \
+        } while (0)
+
+    #define AML_APPEND_MR_NAMED_FIELD(mr_field, name, size_bits)    \
+        do {                                                        \
+            if ((size_bits) != 0) {                                 \
+                aml_append((mr_field), aml_named_field((name), (size_bits))); \
+            }                                                       \
+        } while (0)
+
         Aml *crs;
 
         aml_append(cpu_ctrl_dev,
@@ -627,35 +645,33 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
                    aml_operation_region("PRST", AML_SYSTEM_MEMORY,
                                         aml_int(base_addr),
                                         ACPI_CPU_OSPM_IF_REG_LEN));
+
         /*
          * define named fields within PRST region with 'Byte' access widths
          * and reserve fields with other access width
          */
         field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_WRITE_AS_ZEROS);
         /* reserve CPU 'selector' field (size in bits) */
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS));
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_SELECTOR_SIZE_BITS);
         /* Flag::Enabled Bit(RO) - Read '1' if enabled */
-        aml_append(field, aml_named_field(CPU_ENABLED_F, 1));
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_ENABLED_F, 1);
         /* Flag::Devchk Bit(RW) - Read '1', has a event. Write '1', to clear */
-        aml_append(field, aml_named_field(CPU_DEVCHK_F, 1));
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_DEVCHK_F, 1);
         /* Flag::Ejectrq Bit(RW) - Read 1, has event. Write 1 to clear */
-        aml_append(field, aml_named_field(CPU_EJECTRQ_F, 1));
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_EJECTRQ_F, 1);
         /* Flag::Eject Bit(WO) - OSPM evals _EJx, initiates CPU Eject in Qemu*/
-        aml_append(field, aml_named_field(CPU_EJECT_F, 1));
-        /* Flag::Bit(5)-Bit(7) - Reserve left over bits of 1 byte space */
-        if (ACPI_CPU_MR_RES_FLAG_BITS) {
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAG_BITS));
-        }
-        /* Reserved padding for 4 byte alignment & future extension */
-        if (ACPI_CPU_MR_RES_FLAGS_SIZE_BITS) {
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_FLAGS_SIZE_BITS));
-        }
-        aml_append(field, aml_named_field(CPU_COMMAND,
-                                          ACPI_CPU_MR_CMD_SIZE_BITS));
-        if (ACPI_CPU_MR_RES_CMD_SIZE_BITS) {
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_RES_CMD_SIZE_BITS));
-        }
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_EJECT_F, 1);
+        /* Flag::Bit(ACPI_CPU_FLAGS_USED_BITS)-Bit(7) - Reserve left over bits*/
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_RES_FLAG_BITS);
+        /* Reserved space: padding after flags */
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_RES_FLAGS_SIZE_BITS);
+        /* Command field written by OSPM (e.g. ON, OFF, STANDBY) */
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_COMMAND,
+                                  ACPI_CPU_MR_CMD_SIZE_BITS);
+        /* Reserved space: padding after command field */
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_RES_CMD_SIZE_BITS);
+        /* Command data: 64-bit payload associated with command */
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_CMD_DATA_SIZE_BITS);
         aml_append(cpu_ctrl_dev, field);
 
         /*
@@ -664,8 +680,8 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
          */
         field = aml_field("PRST", AML_DWORD_ACC, AML_NOLOCK, AML_PRESERVE);
         /* CPU selector, write only */
-        aml_append(field, aml_named_field(CPU_SELECTOR,
-                                          ACPI_CPU_MR_SELECTOR_SIZE_BITS));
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_SELECTOR,
+                                  ACPI_CPU_MR_SELECTOR_SIZE_BITS);
         aml_append(cpu_ctrl_dev, field);
 
         /*
@@ -673,14 +689,18 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
          * with other access width
          */
         field = aml_field("PRST", AML_QWORD_ACC, AML_NOLOCK, AML_PRESERVE);
-        /* Reserv flags + cmd + 2byte align */
-        aml_append(field, aml_reserved_field(ACPI_CPU_MR_SELECTOR_SIZE_BITS +
-                                             ACPI_CPU_MR_FLAGS_SIZE_BITS +
-                                             ACPI_CPU_MR_RES_FLAGS_SIZE_BITS +
-                                             ACPI_CPU_MR_CMD_SIZE_BITS +
-                                             ACPI_CPU_MR_RES_CMD_SIZE_BITS));
-        aml_append(field, aml_named_field(CPU_DATA,
-                                          ACPI_CPU_MR_CMD_DATA_SIZE_BITS));
+        /*
+         * Reserve space: selector, flags, reserved flags, command, reserved
+         * command for Qword alignment.
+         */
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_SELECTOR_SIZE_BITS +
+                                            ACPI_CPU_MR_FLAGS_SIZE_BITS +
+                                            ACPI_CPU_MR_RES_FLAGS_SIZE_BITS +
+                                            ACPI_CPU_MR_CMD_SIZE_BITS +
+                                            ACPI_CPU_MR_RES_CMD_SIZE_BITS);
+        /* Command data accessible via Qword */
+        AML_APPEND_MR_NAMED_FIELD(field, CPU_DATA,
+                                  ACPI_CPU_MR_CMD_DATA_SIZE_BITS);
         aml_append(cpu_ctrl_dev, field);
     }
     aml_append(sb_scope, cpu_ctrl_dev);
