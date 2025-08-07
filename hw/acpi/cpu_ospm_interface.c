@@ -121,6 +121,106 @@ enum {
     ACPI_CMD_MAX
 };
 
+#define ACPI_CPU_MR_DEBUG
+#ifdef ACPI_CPU_MR_DEBUG
+static void acpi_dbg_print_mr_offsets(void)
+{
+    warn_report("Memory Region Field Offsets (in bytes):");
+
+    warn_report("  ACPI_CPU_MR_SELECTOR_OFFSET_WO   = %d",
+                ACPI_CPU_MR_SELECTOR_OFFSET_WO);
+
+    warn_report("  ACPI_CPU_MR_FLAGS_OFFSET_RW      = %d",
+                ACPI_CPU_MR_FLAGS_OFFSET_RW);
+
+    warn_report("  ACPI_CPU_MR_CMD_OFFSET_WO        = %d",
+                ACPI_CPU_MR_CMD_OFFSET_WO);
+
+    warn_report("  ACPI_CPU_MR_CMD_DATA_OFFSET_RW   = %d",
+                ACPI_CPU_MR_CMD_DATA_OFFSET_RW);
+}
+
+static void acpi_dbg_print_mr_field_info(void)
+{
+    warn_report("ACPI CPU OSPM Interface Field Sizes and Offsets:");
+    warn_report("  Selector       : %2d bytes (offset: 0x%02X)",
+                ACPI_CPU_MR_SELECTOR_SIZE,
+                ACPI_CPU_MR_SELECTOR_OFFSET_WO);
+
+    warn_report("  Flags          : %2d byte  (offset: 0x%02X)",
+                ACPI_CPU_MR_FLAGS_SIZE,
+                ACPI_CPU_MR_FLAGS_OFFSET_RW);
+
+    warn_report("  Reserved Flags : %2d bytes",
+                ACPI_CPU_MR_RES_FLAGS_SIZE);
+
+    warn_report("  Command        : %2d byte  (offset: 0x%02X)",
+                ACPI_CPU_MR_CMD_SIZE,
+                ACPI_CPU_MR_CMD_OFFSET_WO);
+
+    warn_report("  Reserved Cmd   : %2d bytes",
+                ACPI_CPU_MR_RES_CMD_SIZE);
+
+    warn_report("  Data           : %2d bytes (offset: 0x%02X)",
+                ACPI_CPU_MR_CMD_DATA_SIZE,
+                ACPI_CPU_MR_CMD_DATA_OFFSET_RW);
+
+    warn_report("  --------------------------------------------");
+    warn_report("  Total Region   : %2d bytes", ACPI_CPU_OSPM_IF_REG_LEN);
+}
+
+static void acpi_dbg_print_mr_layout(void)
+{
+    warn_report("CPU OSPM Interface MMIO Layout (Total: %d bytes):",
+                ACPI_CPU_OSPM_IF_REG_LEN);
+
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" |  0x00  |  0x01  |  0x02  |  0x03  |  0x04  |  0x05  |  0x06  |  0x07  |");
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" | Selector (DWord, WO)     | Flags |    Reserved (3 bytes)          |");
+    warn_report(" |  4 bytes                 | 1 B   |                                |");
+
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" |  0x08  |  0x09  |  0x0A  |  0x0B  |  0x0C  |  0x0D  |  0x0E  |  0x0F  |");
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" | Command (1B, WO)         | Reserved (7 bytes)                     |");
+
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" |  0x10  |  0x11  |  0x12  |  0x13  |  0x14  |  0x15  |  0x16  |  0x17  |");
+    warn_report(" +--------+--------+--------+--------+--------+--------+--------+--------+");
+    warn_report(" |                Data (QWord, RW)                                    |");
+    warn_report(" |            (used by CPU scan / _OST / command exchange)            |");
+
+    warn_report(" \n");
+    warn_report("Field Sizes:");
+    warn_report("  Selector      : %d bytes (offset %d)", ACPI_CPU_MR_SELECTOR_SIZE,
+                ACPI_CPU_MR_SELECTOR_OFFSET_WO);
+    warn_report("  Flags         : %d byte  (offset %d)", ACPI_CPU_MR_FLAGS_SIZE,
+                ACPI_CPU_MR_FLAGS_OFFSET_RW);
+    warn_report("  Reserved Flags: %d bytes", ACPI_CPU_MR_RES_FLAGS_SIZE);
+    warn_report("  Command       : %d byte  (offset %d)", ACPI_CPU_MR_CMD_SIZE,
+                ACPI_CPU_MR_CMD_OFFSET_WO);
+    warn_report("  Reserved Cmd  : %d bytes", ACPI_CPU_MR_RES_CMD_SIZE);
+    warn_report("  Data          : %d bytes (offset %d)", ACPI_CPU_MR_CMD_DATA_SIZE,
+                ACPI_CPU_MR_CMD_DATA_OFFSET_RW);
+    warn_report("  Total Size    : %d bytes", ACPI_CPU_OSPM_IF_REG_LEN);
+
+    warn_report(" \n");
+    warn_report("Flag Bit Definitions (bit position in Flags byte):");
+    warn_report("  Bit %d: ENABLED (Read-only)", ACPI_CPU_FLAGS_USED_BITS - 4);
+    warn_report("  Bit %d: DEVCHK  (Read/Write)", ACPI_CPU_FLAGS_USED_BITS - 3);
+    warn_report("  Bit %d: EJECTRQ (Read/Write)", ACPI_CPU_FLAGS_USED_BITS - 2);
+    warn_report("  Bit %d: EJECT   (Write-only)", ACPI_CPU_FLAGS_USED_BITS - 1);
+    warn_report("  Bits %d–7: Reserved", ACPI_CPU_FLAGS_USED_BITS);
+
+    warn_report(" \n");
+    warn_report("Command Values:");
+    warn_report("  0 = ACPI_GET_NEXT_CPU_WITH_EVENT_CMD");
+    warn_report("  1 = ACPI_OST_EVENT_CMD");
+    warn_report("  2 = ACPI_OST_STATUS_CMD");
+}
+#endif
+
 static ACPIOSTInfo *
 acpi_cpu_ospm_ost_status(int idx, AcpiCpuOspmStateStatus *cdev)
 {
@@ -157,7 +257,6 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
     if (cpu_st->selector >= cpu_st->dev_count) {
         return val;
     }
-    warn_report("%s: CPU Selector %d\n", __func__, cpu_st->selector);
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_MR_FLAGS_OFFSET_RW:
@@ -166,10 +265,18 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
         val |= cdev->devchk_pending ? ACPI_CPU_MR_FLAGS_BIT_DEVCHK : 0;
         val |= cdev->ejrqst_pending ? ACPI_CPU_MR_FLAGS_BIT_EJECTRQ : 0;
         trace_acpi_cpuos_if_read_flags(cpu_st->selector, val);
+        warn_report("%s: CPU %d, Flags[Ena %d DevChk %u EjRqst %u]\n",
+                    __func__, cpu_st->selector,
+                    qdev_check_enabled(DEVICE(cdev->cpu)),
+                    cdev->devchk_pending,
+                    cdev->ejrqst_pending);
         break;
     case ACPI_CPU_MR_CMD_DATA_OFFSET_RW:
         switch (cpu_st->command) {
         case ACPI_GET_NEXT_CPU_WITH_EVENT_CMD:
+           warn_report("%s: CPU %d, Command %u, Read Val %d\n",
+                         __func__, cpu_st->selector, cpu_st->command,
+                         cpu_st->selector);
            val = cpu_st->selector;
            break;
         default:
@@ -180,6 +287,10 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
         trace_acpi_cpuos_if_read_cmd_data(cpu_st->selector, val);
         break;
     default:
+       warn_report("%s: CPU %d, Wrong offset addr %lu\n",
+                    __func__, cpu_st->selector, addr);
+       acpi_dbg_print_mr_offsets();
+       acpi_dbg_print_mr_field_info();
         break;
     }
     return val;
@@ -201,9 +312,10 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
             return;
         }
     }
-    warn_report("%s: CPU Selector %d\n", __func__, cpu_st->selector);
+
     switch (addr) {
     case ACPI_CPU_MR_SELECTOR_OFFSET_WO: /* current CPU selector */
+        warn_report("%s: CPU Selector %d\n", __func__, cpu_st->selector);
         cpu_st->selector = data;
         trace_acpi_cpuos_if_write_idx(cpu_st->selector);
         break;
@@ -211,15 +323,23 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
         cdev = &cpu_st->devs[cpu_st->selector];
         if (data & ACPI_CPU_MR_FLAGS_BIT_DEVCHK) {
             /* clear device-check pending event */
+            warn_report("%s: CPU %d, Clear Device Check Pending\n",
+                       __func__,
+                       cpu_st->selector);
             cdev->devchk_pending = false;
             trace_acpi_cpuos_if_clear_devchk_evt(cpu_st->selector);
         } else if (data & ACPI_CPU_MR_FLAGS_BIT_EJECTRQ) {
             /* clear eject-request pending event */
+            warn_report("%s: CPU %d, Clear Eject Rqst Check Pending\n",
+                         __func__,
+                         cpu_st->selector);
             cdev->ejrqst_pending = false;
             trace_acpi_cpuos_if_clear_ejrqst_evt(cpu_st->selector);
         } else if (data & ACPI_CPU_MR_FLAGS_BIT_EJECT) {
             DeviceState *dev = NULL;
-
+            warn_report("%s: CPU %d, OSPM says, Eject Now\n",
+                         __func__,
+                         cpu_st->selector);
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_acpi_cpuos_if_ejecting_invalid_cpu(cpu_st->selector);
                 break;
@@ -238,6 +358,8 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
         trace_acpi_cpuos_if_write_cmd(cpu_st->selector, data);
         if (data < ACPI_CMD_MAX) {
             cpu_st->command = data;
+            warn_report("%s: CPU %d, Command %u\n",
+                         __func__, cpu_st->selector, cpu_st->command);
             if (cpu_st->command == ACPI_GET_NEXT_CPU_WITH_EVENT_CMD) {
                 uint32_t iter = cpu_st->selector;
 
@@ -259,12 +381,16 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
         case ACPI_OST_EVENT_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_event = data;
+            warn_report("%s: CPU %d, OST Event %u\n",
+                         __func__, cpu_st->selector, cdev->ost_event);
            trace_acpi_cpuos_if_write_ost_ev(cpu_st->selector, cdev->ost_event);
            break;
         }
         case ACPI_OST_STATUS_CMD: {
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_status = data;
+           warn_report("%s: CPU %d, OST Status %u\n",
+                         __func__, cpu_st->selector, cdev->ost_status);
            info = acpi_cpu_ospm_ost_status(cpu_st->selector, cdev);
            qapi_event_send_acpi_device_ost(info);
            qapi_free_ACPIOSTInfo(info);
@@ -280,6 +406,10 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
         break;
     default:
         trace_acpi_cpuos_if_write_invalid_offset(cpu_st->selector, addr);
+       warn_report("%s: CPU %d, Wrong offset addr %lu\n",
+                    __func__, cpu_st->selector, addr);
+       acpi_dbg_print_mr_offsets();
+       acpi_dbg_print_mr_field_info();
         break;
     }
 }
@@ -317,6 +447,10 @@ void acpi_cpu_ospm_state_interface_init(MemoryRegion *as, Object *owner,
                           "ACPI CPU OSPM State Interface Memory Region",
                           ACPI_CPU_OSPM_IF_REG_LEN);
     memory_region_add_subregion(as, base_addr, &state->ctrl_reg);
+
+#ifdef ACPI_CPU_MR_DEBUG
+     acpi_dbg_print_mr_layout();
+#endif
 }
 
 static AcpiCpuOspmStateStatus *
