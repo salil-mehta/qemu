@@ -444,7 +444,7 @@ static const MemoryRegionOps cpu_common_mr_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 1,
-        .max_access_size = ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE,
+        .max_access_size = 4 /* ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE, */
     },
 };
 
