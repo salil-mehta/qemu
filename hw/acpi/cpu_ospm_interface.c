@@ -278,6 +278,10 @@ acpi_cpu_ospm_intf_mr_read(void *opaque, hwaddr addr, unsigned size)
     AcpiCpuOspmStateStatus *cdev;
     uint64_t val = 0;
     warn_report("%s: Enter\n", __func__);
+    warn_report("[%s] PRST W addr=0x%02" HWADDR_PRIx " size=%u",
+                 __func__, addr, size);
+
+
     if (cpu_st->selector >= cpu_st->dev_count) {
         return val;
     }
@@ -330,6 +334,8 @@ acpi_cpu_ospm_intf_mr_write(void *opaque, hwaddr addr, uint64_t data,
 
     assert(cpu_st->dev_count);
     warn_report("%s: Enter\n", __func__);
+    warn_report("[%s] PRST W addr=0x%02" HWADDR_PRIx " size=%u data=0x%" PRIx64,
+                 __func__, addr, size, data);
     if (addr) {
         if (cpu_st->selector >= cpu_st->dev_count) {
             trace_acpi_cpuos_if_invalid_idx_selected(cpu_st->selector);
