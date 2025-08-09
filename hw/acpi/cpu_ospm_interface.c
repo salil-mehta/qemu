@@ -655,7 +655,7 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
          * define named fields within PRST region with 'Byte' access widths
          * and reserve fields with other access width
          */
-        field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_WRITE_AS_ZEROS);
+        field = aml_field("PRST", AML_BYTE_ACC, AML_NOLOCK, AML_PRESERVE);
         /* reserve CPU 'selector' field (size in bits) */
         AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_SELECTOR_SIZE_BITS);
         /* Flag::Enabled Bit(RO) - Read '1' if enabled */
