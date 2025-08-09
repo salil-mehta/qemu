@@ -62,9 +62,9 @@
 /* Sub-Field sizes (in bytes) */
 #define ACPI_CPU_MR_SELECTOR_SIZE  4 /* Write-only (DWord access) */
 #define ACPI_CPU_MR_FLAGS_SIZE     1 /* Read-write (Byte access) */
-#define ACPI_CPU_MR_RES_FLAGS_SIZE 0 /* Reserved padding */
+#define ACPI_CPU_MR_RES_FLAGS_SIZE 1 /* Reserved padding */
 #define ACPI_CPU_MR_CMD_SIZE       1 /* Write-only (Byte access) */
-#define ACPI_CPU_MR_RES_CMD_SIZE   2 /* Reserved padding */
+#define ACPI_CPU_MR_RES_CMD_SIZE   1 /* Reserved padding */
 #define ACPI_CPU_MR_CMD_DATA_SIZE  4 /* Read-write (QWord access) */
 
 #define ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE \
@@ -445,6 +445,11 @@ static const MemoryRegionOps cpu_common_mr_ops = {
     .valid = {
         .min_access_size = 1,
         .max_access_size = ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE,
+    },
+    .impl = {
+        .min_access_size = 1,
+        .max_access_size = ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE,
+        .unaligned = false,
     },
 };
 
