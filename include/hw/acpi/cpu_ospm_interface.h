@@ -30,7 +30,7 @@
  * runtime errors or build-time assertion failures (e.g., _Static_assert),
  * breaking correct device emulation and guest OS coordination.
  */
-#define ACPI_CPU_OSPM_IF_REG_LEN 12
+#define ACPI_CPU_OSPM_IF_REG_LEN 16
 
 typedef struct  {
     CPUState *cpu;

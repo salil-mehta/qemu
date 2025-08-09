@@ -65,7 +65,7 @@
 #define ACPI_CPU_MR_RES_FLAGS_SIZE 1 /* Reserved padding */
 #define ACPI_CPU_MR_CMD_SIZE       1 /* Write-only (Byte access) */
 #define ACPI_CPU_MR_RES_CMD_SIZE   1 /* Reserved padding */
-#define ACPI_CPU_MR_CMD_DATA_SIZE  4 /* Read-write (QWord access) */
+#define ACPI_CPU_MR_CMD_DATA_SIZE  8 /* Read-write (QWord access) */
 
 #define ACPI_CPU_OSPM_IF_MAX_FIELD_SIZE \
     MAX_CONST(ACPI_CPU_MR_SELECTOR_SIZE, \
@@ -640,7 +640,7 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         aml_append(cpu_ctrl_dev, aml_mutex(CPU_LOCK, 0));
 
         crs = aml_resource_template();
-        aml_append(crs, aml_memory32_fixed(base_addr, AML_SYSTEM_MEMORY,
+        aml_append(crs, aml_memory32_fixed(base_addr, ACPI_CPU_OSPM_IF_REG_LEN,
                    AML_READ_WRITE));
 
         aml_append(cpu_ctrl_dev, aml_name_decl("_CRS", crs));
@@ -687,7 +687,6 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
         /* CPU selector, write only */
         AML_APPEND_MR_NAMED_FIELD(field, CPU_SELECTOR,
                                   ACPI_CPU_MR_SELECTOR_SIZE_BITS);
-#if 0
         aml_append(cpu_ctrl_dev, field);
 
         /*
@@ -695,12 +694,11 @@ void acpi_build_cpus_aml(Aml *table, hwaddr base_addr, const char *res_root,
          * with other access width
          */
         field = aml_field("PRST", AML_QWORD_ACC, AML_NOLOCK, AML_PRESERVE);
-#endif
         /*
          * Reserve space: selector, flags, reserved flags, command, reserved
          * command for Qword alignment.
          */
-        AML_APPEND_MR_RESERVED_FIELD(field, /* ACPI_CPU_MR_SELECTOR_SIZE_BITS +*/
+        AML_APPEND_MR_RESERVED_FIELD(field, ACPI_CPU_MR_SELECTOR_SIZE_BITS +
                                             ACPI_CPU_MR_FLAGS_SIZE_BITS +
                                             ACPI_CPU_MR_RES_FLAGS_SIZE_BITS +
                                             ACPI_CPU_MR_CMD_SIZE_BITS +
