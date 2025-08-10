@@ -328,12 +328,15 @@ SRST
 ERST
 
 DEF("smp", HAS_ARG, QEMU_OPTION_smp,
-    "-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets]\n"
-    "               [,dies=dies][,clusters=clusters][,modules=modules][,cores=cores]\n"
-    "               [,threads=threads]\n"
-    "                set the number of initial CPUs to 'n' [default=1]\n"
-    "                maxcpus= maximum number of total CPUs, including\n"
-    "                offline CPUs for hotplug, etc\n"
+    "-smp [[cpus=]n][,disabledcpus=disabledcpus][,maxcpus=maxcpus][,drawers=drawers][,books=books]\n"
+    "               [,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules]\n"
+    "               [,cores=cores][,threads=threads]\n"
+    "                set the initial number of CPUs present and\n"
+    "                  administratively enabled at boot time to 'n' [default=1]\n"
+    "                disabledcpus= number of present but administratively\n"
+    "                  disabled CPUs (unavailable to the guest at boot)\n"
+    "                maxcpus= maximum total CPUs (present + hotpluggable)\n"
+    "                  on machines without CPU hotplug, defaults to n + disabledcpus\n"
     "                drawers= number of drawers on the machine board\n"
     "                books= number of books in one drawer\n"
     "                sockets= number of sockets in one book\n"
@@ -353,22 +356,49 @@ DEF("smp", HAS_ARG, QEMU_OPTION_smp,
     "      For a particular machine type board, an expected CPU topology hierarchy\n"
     "      can be defined through the supported sub-option. Unsupported parameters\n"
     "      can also be provided in addition to the sub-option, but their values\n"
-    "      must be set as 1 in the purpose of correct parsing.\n",
+    "      must be set as 1 in the purpose of correct parsing.\n"
+    "                                                          \n"
+    "      Administratively disabled CPUs: Some machine types do not support vCPU\n"
+    "      hotplug but their CPUs can be marked disabled (powered off) and kept\n"
+    "      unavailable to the guest. Later, such CPUs can be enabled via QMP/HMP\n"
+    "      (e.g., 'device_set ... admin-state=enable'). This is similar to hotplug,\n"
+    "      except all disabled CPUs are already present at boot. Useful on\n"
+    "      architectures that lack architectural CPU hotplug.\n",
     QEMU_ARCH_ALL)
 SRST
-``-smp [[cpus=]n][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
-    Simulate a SMP system with '\ ``n``\ ' CPUs initially present on
-    the machine type board. On boards supporting CPU hotplug, the optional
-    '\ ``maxcpus``\ ' parameter can be set to enable further CPUs to be
-    added at runtime. When both parameters are omitted, the maximum number
+``-smp [[cpus=]n][,disabledcpus=disabledcpus][,maxcpus=maxcpus][,drawers=drawers][,books=books][,sockets=sockets][,dies=dies][,clusters=clusters][,modules=modules][,cores=cores][,threads=threads]``
+    Simulate a SMP system with '\ ``n``\ ' CPUs initially present & enabled on
+    the machine type board. Furthermore, on architectures that support changing
+    the administrative power state of CPUs, optional '\ ``disabledcpus``\ '
+    parameter specifies *additional* CPUs that are present in firmware (e.g.,
+    ACPI) but are administratively disabled (i.e., not usable by the guest at
+    boot time).
+
+    This is different from CPU hotplug where additional CPUs are not even
+    present in the system description. Administratively disabled CPUs appear in
+    ACPI tables i.e. are provisioned, but cannot be used until explicitly
+    enabled via QMP/HMP or the deviceset API.
+
+    On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
+    can be set to enable further CPUs to be added at runtime. When both
+    '\ ``n``\ ' & '\ ``maxcpus``\ ' parameters are omitted, the maximum number
     of CPUs will be calculated from the provided topology members and the
-    initial CPU count will match the maximum number. When only one of them
-    is given then the omitted one will be set to its counterpart's value.
-    Both parameters may be specified, but the maximum number of CPUs must
-    be equal to or greater than the initial CPU count. Product of the
-    CPU topology hierarchy must be equal to the maximum number of CPUs.
-    Both parameters are subject to an upper limit that is determined by
-    the specific machine type chosen.
+    initial CPU count will match the maximum number. When only one of them is
+    given then the omitted one will be set to its counterpart's value. Both
+    parameters may be specified, but the maximum number of CPUs must be equal
+    to or greater than the initial CPU count. Product of the CPU topology
+    hierarchy must be equal to the maximum number of CPUs. Both parameters are
+    subject to an upper limit that is determined by the specific machine type
+    chosen. Boards that support administratively disabled CPUs but do *not*
+    support CPU hotplug derive the maximum number of CPUs implicitly:
+    '\ ``maxcpus``\ ' is treated as '\ ``n + disabledcpus``\ ' (the total CPUs
+    present in firmware). If '\ ``maxcpus``\ ' is provided, it must equal
+    '\ ``n + disabledcpus``\ '. The topology product must equal this derived
+    maximum as well.
+
+    Note: Administratively disabled CPUs will appear to the guest as
+    unavailable, and any attempt to bring them online must go through QMP/HMP
+    commands like 'device_set'.
 
     To control reporting of CPU topology information, values of the topology
     parameters can be specified. Machines may only support a subset of the
@@ -426,6 +456,24 @@ SRST
     ::
 
         -smp 2
+
+    Examples using 'disabledcpus':
+
+    For a board without CPU hotplug, enable 4 CPUs at boot and provision
+    2 additional administratively disabled CPUs (maximum is derived
+    implicitly as 6 = 4 + 2):
+
+    ::
+
+        -smp cpus=4,disabledcpus=2
+
+    For a board that supports CPU hotplug and 'disabledcpus', enable 4 CPUs
+    at boot, provision 2 administratively disabled CPUs, and allow hotplug of
+    2 more CPUs (for a maximum of 8):
+
+    ::
+
+        -smp cpus=4,disabledcpus=2,maxcpus=8
 
     Note: The cluster topology will only be generated in ACPI and exposed
     to guest if it's explicitly specified in -smp.
