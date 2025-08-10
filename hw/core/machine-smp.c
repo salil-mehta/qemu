@@ -87,6 +87,7 @@ void machine_parse_smp_config(MachineState *ms,
 {
     MachineClass *mc = MACHINE_GET_CLASS(ms);
     unsigned cpus    = config->has_cpus ? config->cpus : 0;
+    unsigned disabledcpus = config->has_disabledcpus ? config->disabledcpus : 0;
     unsigned drawers = config->has_drawers ? config->drawers : 0;
     unsigned books   = config->has_books ? config->books : 0;
     unsigned sockets = config->has_sockets ? config->sockets : 0;
@@ -166,8 +167,13 @@ void machine_parse_smp_config(MachineState *ms,
         sockets = sockets > 0 ? sockets : 1;
         cores = cores > 0 ? cores : 1;
         threads = threads > 0 ? threads : 1;
+
+        maxcpus = drawers * books * sockets * dies * clusters *
+                    modules * cores * threads;
+        cpus = maxcpus - disabledcpus;
     } else {
-        maxcpus = maxcpus > 0 ? maxcpus : cpus;
+        maxcpus = maxcpus > 0 ? maxcpus : cpus + disabledcpus;
+        cpus = cpus > 0 ? cpus : maxcpus - disabledcpus;
 
         if (mc->smp_props.prefer_sockets) {
             /* prefer sockets over cores before 6.2 */
@@ -207,12 +213,8 @@ void machine_parse_smp_config(MachineState *ms,
         }
     }
 
-    total_cpus = drawers * books * sockets * dies *
-                 clusters * modules * cores * threads;
-    maxcpus = maxcpus > 0 ? maxcpus : total_cpus;
-    cpus = cpus > 0 ? cpus : maxcpus;
-
     ms->smp.cpus = cpus;
+    ms->smp.disabledcpus = disabledcpus;
     ms->smp.drawers = drawers;
     ms->smp.books = books;
     ms->smp.sockets = sockets;
@@ -226,6 +228,8 @@ void machine_parse_smp_config(MachineState *ms,
     mc->smp_props.has_clusters = config->has_clusters;
 
     /* sanity-check of the computed topology */
+    total_cpus = maxcpus = drawers * books * sockets * dies * clusters *
+                modules * cores * threads;
     if (total_cpus != maxcpus) {
         g_autofree char *topo_msg = cpu_hierarchy_to_string(ms);
         error_setg(errp, "Invalid CPU topology: "
@@ -235,12 +239,12 @@ void machine_parse_smp_config(MachineState *ms,
         return;
     }
 
-    if (maxcpus < cpus) {
+    if (maxcpus < (cpus + disabledcpus)) {
         g_autofree char *topo_msg = cpu_hierarchy_to_string(ms);
         error_setg(errp, "Invalid CPU topology: "
-                   "maxcpus must be equal to or greater than smp: "
-                   "%s == maxcpus (%u) < smp_cpus (%u)",
-                   topo_msg, maxcpus, cpus);
+                   "maxcpus must be equal to or greater than smp[+disabledcpus]:"
+                   "%s == maxcpus (%u) < smp_cpus (%u) [+ offline cpus (%u)]",
+                   topo_msg, maxcpus, cpus, disabledcpus);
         return;
     }
 
