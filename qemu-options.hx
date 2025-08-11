@@ -375,7 +375,10 @@ SRST
     This is different from CPU hotplug where additional CPUs are not even
     present in the system description. Administratively disabled CPUs appear in
     ACPI tables i.e. are provisioned, but cannot be used until explicitly
-    enabled via QMP/HMP or the deviceset API.
+    enabled via QMP/HMP or the deviceset API. On ACPI guests, each vCPU counted
+    by 'disabledcpus=' is provisioned with '\ ``_STA``\ ' reporting Present=1
+    and Enabled=0 (present-offline) at boot; it becomes Enabled=1 when brought
+    online via 'device_set ... admin-state=enable'.
 
     On boards supporting CPU hotplug, the optional '\ ``maxcpus``\ ' parameter
     can be set to enable further CPUs to be added at runtime. When both
@@ -455,6 +458,15 @@ SRST
 
         -smp 2
 
+    Note: The cluster topology will only be generated in ACPI and exposed
+    to guest if it's explicitly specified in -smp.
+
+    Note: Administratively disabled CPUs (specified via 'disabledcpus=' and
+    '-deviceset' at CLI during boot) are especially useful for platforms like
+    ARM that lack native CPU hotplug support. These CPUs will appear to the
+    guest as unavailable, and any attempt to bring them online must go through
+    QMP/HMP commands like 'device_set'.
+
     Examples using 'disabledcpus':
 
     For a board without CPU hotplug, enable 4 CPUs at boot and provision
@@ -472,9 +484,6 @@ SRST
     ::
 
         -smp cpus=4,disabledcpus=2,maxcpus=8
-
-    Note: The cluster topology will only be generated in ACPI and exposed
-    to guest if it's explicitly specified in -smp.
 ERST
 
 DEF("numa", HAS_ARG, QEMU_OPTION_numa,
@@ -1279,6 +1288,40 @@ SRST
     ``aw-bits=val`` (val between 32 and 64, default depends on machine)
         This decides the address width of the IOVA address space.
 
+ERST
+
+DEF("deviceset", HAS_ARG, QEMU_OPTION_deviceset,
+    "-deviceset driver[,prop[=value]][,...]\n"
+    "                Set administrative power state of an existing device.\n"
+    "                Does not hotplug a new device. Can disable or enable\n"
+    "                devices (such as CPUs) at boot based on policy.\n"
+    "                Example:\n"
+    "                    -deviceset host-arm-cpu,core-id=2,admin-state=disabled\n"
+    "                Use '-deviceset help' for supported drivers\n"
+    "                Use '-deviceset driver,help' for driver-specific properties\n",
+    QEMU_ARCH_ALL)
+SRST
+``-deviceset driver[,prop[=value]][,...]``
+    Configure an existing device's administrative power state or properties.
+
+    Unlike ``-device``, this option does not create a new device. Instead,
+    it sets startup properties (such as administrative power state) for
+    a device already declared via -smp or other machine configuration.
+
+    Example:
+        -smp cpus=4
+        -deviceset host-arm-cpu,core-id=2,admin-state=disabled
+
+    The above disables CPU core 2 at boot using administrative offlining.
+    The guest may later re-enable the core (if permitted by platform policy).
+
+    ``state=enabled|disabled``
+        Sets the administrative state of the device:
+        - ``enabled``: device is made available at boot
+        - ``disabled``: device is administratively disabled and powered off
+
+    Use ``-deviceset help`` to view all supported drivers.
+    Use ``-deviceset driver,help`` for property-specific help.
 ERST
 
 DEF("name", HAS_ARG, QEMU_OPTION_name,

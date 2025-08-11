@@ -116,6 +116,7 @@ extern QemuOptsList qemu_drive_opts;
 extern QemuOptsList bdrv_runtime_opts;
 extern QemuOptsList qemu_chardev_opts;
 extern QemuOptsList qemu_device_opts;
+extern QemuOptsList qemu_deviceset_opts;
 extern QemuOptsList qemu_netdev_opts;
 extern QemuOptsList qemu_nic_opts;
 extern QemuOptsList qemu_net_opts;
