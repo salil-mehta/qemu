@@ -170,6 +170,18 @@ char *cpu_model_from_type(const char *typename)
     return g_strdup(typename);
 }
 
+bool cpu_typename_is_a(const char *typename, const char *base_typename)
+{
+    ObjectClass *oc;
+
+    if (!typename || !base_typename) {
+        return false;
+    }
+
+    oc = object_class_by_name(typename);
+    return oc && object_class_dynamic_cast(oc, base_typename);
+}
+
 static void cpu_common_parse_features(const char *typename, char *features,
                                       Error **errp)
 {

@@ -186,6 +186,7 @@ struct VirtMachineState {
     char *oem_table_id;
     bool ns_el2_virt_timer_irq;
     CXLState cxl_devices_state;
+    DeviceListener device_listener;
     bool legacy_smmuv3_present;
     MemoryRegion *sysmem;
     MemoryRegion *secure_sysmem;
