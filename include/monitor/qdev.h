@@ -6,6 +6,36 @@
 void hmp_info_qtree(Monitor *mon, const QDict *qdict);
 void hmp_info_qdm(Monitor *mon, const QDict *qdict);
 void qmp_device_add(QDict *qdict, QObject **ret_data, Error **errp);
+/**
+ * qmp_device_set:
+ * @qdict: Boxed arguments identifying the target device and property changes.
+ *
+ *         The device can be identified in one of two ways:
+ *           1. By "id":      Device instance ID (string), or
+ *           2. By "driver":  Device type (string) plus one or more
+ *                            property=value pairs to match.
+ *
+ *         Must also include at least one property assignment to change.
+ *         Currently used for:
+ *           - "admin-state": "enable" | "disable"
+ *
+ *         Additional properties may be supported by specific devices
+ *         in future.
+ *
+ * @errp:  Pointer to error object (set on failure).
+ *
+ * Change one or more mutable properties of an existing device at runtime.
+ * Initially intended for administrative CPU power-state control via
+ * "admin-state" on CPU devices, but may be extended to support other
+ * per-device set/unset controls when allowed by the target device class.
+ *
+ * Returns: Nothing. On success, replies with `{ "return": true }` via QMP.
+ *
+ * Errors:
+ *  - DeviceNotFound:  No matching device found
+ *  - GenericError:    Parameter validation failed or operation unsupported
+ */
+void qmp_device_set(const QDict *qdict, Error **errp);
 
 int qdev_device_help(QemuOpts *opts);
 DeviceState *qdev_device_add(QemuOpts *opts, Error **errp);
