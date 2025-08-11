@@ -263,9 +263,17 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     }
 
     dc = DEVICE_CLASS(oc);
-    if (!dc->user_creatable) {
+    if (!dc->user_creatable && !dc->admin_power_state_supported) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
                    "a pluggable device type");
+        return NULL;
+    }
+
+    if (phase_check(PHASE_MACHINE_READY) &&
+        (!dc->hotpluggable || !dc->admin_power_state_supported)) {
+        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
+                   "a pluggable device type or which supports changing power-"
+                   "state administratively");
         return NULL;
     }
 
@@ -939,6 +947,76 @@ void qmp_device_del(const char *id, Error **errp)
     }
 }
 
+void qmp_device_set(const QDict *qdict, Error **errp)
+{
+    const char *state;
+    const char *driver;
+    DeviceState *dev;
+    DeviceClass *dc;
+    const char *id;
+
+    driver = qdict_get_try_str(qdict, "driver");
+    if (!driver) {
+        error_setg(errp, "Parameter 'driver' is missing");
+        return;
+    }
+
+    /* check driver exists and we are at the right phase of machine init */
+    dc = qdev_get_device_class(&driver, errp);
+    if (!dc) {
+        error_setg(errp, "driver '%s' not supported", driver);
+        return;
+    }
+
+    if (migration_is_running()) {
+        error_setg(errp, "device_set not allowed while migrating");
+        return;
+    }
+
+    id = qdict_get_try_str(qdict, "id");
+
+    if (id) {
+        /* Lookup by ID */
+        dev = find_device_state(id, false, errp);
+        if (errp && *errp) {
+            error_prepend(errp, "Device lookup failed for ID '%s': ", id);
+            return;
+        }
+    } else {
+        /* Lookup using driver and properties */
+        dev = qdev_find_device(qdict, errp);
+        if (errp && *errp) {
+            error_prepend(errp, "Device lookup for %s failed: ", driver);
+            return;
+        }
+    }
+    if (!dev) {
+        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
+                  "No device found for driver '%s'", driver);
+        return;
+    }
+
+    state = qdict_get_try_str(qdict, "admin-state");
+    if (!state) {
+        error_setg(errp, "no device state change specified for device %s ",
+                   dev->id);
+        return;
+    } else if (!strcmp(state, "enable")) {
+
+        if (!qdev_enable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
+            return;
+        }
+    } else if (!strcmp(state, "disable")) {
+        if (!qdev_disable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
+            return;
+        }
+    } else {
+        error_setg(errp, "unrecognized specified state *%s* for device %s",
+                   state, dev->id);
+        return;
+    }
+}
+
 int qdev_sync_config(DeviceState *dev, Error **errp)
 {
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
@@ -1016,6 +1094,14 @@ void hmp_device_del(Monitor *mon, const QDict *qdict)
     Error *err = NULL;
 
     qmp_device_del(id, &err);
+    hmp_handle_error(mon, err);
+}
+
+void hmp_device_set(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    qmp_device_set(qdict, &err);
     hmp_handle_error(mon, err);
 }
 
@@ -1101,6 +1187,41 @@ void device_del_completion(ReadLineState *rs, int nb_args, const char *str)
     peripheral_device_del_completion(rs, str);
 }
 
+void device_set_completion(ReadLineState *rs, int nb_args, const char *str)
+{
+    GSList *list, *elt;
+    size_t len;
+
+    if (nb_args == 2) {
+        len = strlen(str);
+        readline_set_completion_index(rs, len);
+
+        list = elt = object_class_get_list(TYPE_DEVICE, false);
+        while (elt) {
+            DeviceClass *dc = OBJECT_CLASS_CHECK(DeviceClass, elt->data,
+                                                 TYPE_DEVICE);
+            readline_add_completion_of(
+                rs, str, object_class_get_name(OBJECT_CLASS(dc)));
+            elt = elt->next;
+        }
+        g_slist_free(list);
+        return;
+    }
+
+    if (nb_args == 3) {
+        readline_set_completion_index(rs, strlen(str));
+        readline_add_completion_of(rs, str, "admin-state");
+        return;
+    }
+
+    if (nb_args == 4) {
+        readline_set_completion_index(rs, strlen(str));
+        readline_add_completion_of(rs, str, "enable");
+        readline_add_completion_of(rs, str, "disable");
+        return;
+    }
+}
+
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp)
 {
     DeviceState *dev;
@@ -1129,6 +1250,22 @@ QemuOptsList qemu_device_opts = {
          * no elements => accept any
          * sanity checking will happen later
          * when setting device properties
+         */
+        { /* end of list */ }
+    },
+};
+
+QemuOptsList qemu_deviceset_opts = {
+    .name = "deviceset",
+    .implied_opt_name = "driver",
+    .head = QTAILQ_HEAD_INITIALIZER(qemu_deviceset_opts.head),
+    .desc = {
+        /*
+         * no fixed schema; parameters include:
+         * - driver=<device-name>
+         * - id=<device-id> (optional)
+         * - admin-state=enabled|disabled
+         * - other optional props for locating the device
          */
         { /* end of list */ }
     },
