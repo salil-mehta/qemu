@@ -74,6 +74,7 @@
 #include "qapi/visitor.h"
 #include "qapi/qapi-visit-common.h"
 #include "qobject/qlist.h"
+#include "qobject/qdict.h"
 #include "standard-headers/linux/input.h"
 #include "hw/arm/smmuv3.h"
 #include "hw/acpi/acpi.h"
@@ -1824,6 +1825,88 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
+static DeviceState *virt_find_cpu(const QDict *opts, Error **errp)
+{
+    int64_t socket_id, cluster_id, core_id, thread_id;
+    MachineState *ms = MACHINE(qdev_get_machine());
+    int64_t T, C, K, cpu_id;
+    CPUState *cpu;
+    const char *s;
+
+    /* parse topology */
+    socket_id  = (s = qdict_get_try_str(opts, "socket-id")) ?
+                  strtoll(s, NULL, 10) : 0;
+    cluster_id = (s = qdict_get_try_str(opts, "cluster-id")) ?
+                 strtoll(s, NULL, 10) : 0;
+    core_id    = (s = qdict_get_try_str(opts, "core-id")) ?
+                 strtoll(s, NULL, 10) : 0;
+    thread_id  = (s = qdict_get_try_str(opts, "thread-id")) ?
+                 strtoll(s, NULL, 10) : 0;
+
+    /* Range checks */
+    if (thread_id < 0 || thread_id >= ms->smp.threads) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid thread-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, thread_id);
+        return NULL;
+    }
+    if (core_id < 0 || core_id >= ms->smp.cores) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid core-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, core_id);
+        return NULL;
+    }
+    if (cluster_id < 0 || cluster_id >= ms->smp.clusters) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid cluster-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, cluster_id);
+        return NULL;
+    }
+    if (socket_id < 0 || socket_id >= ms->smp.sockets) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid socket-id %ld",
+                   socket_id, cluster_id, core_id, thread_id, socket_id);
+        return NULL;
+    }
+
+    /* Compute logical CPU index: t + T*(c + C*(k + K*s)). */
+    T = ms->smp.threads;
+    C = ms->smp.cores;
+    K = ms->smp.clusters;
+    cpu_id = thread_id + T * (core_id + C * (cluster_id + K * socket_id));
+
+    cpu = machine_get_possible_cpu((int)cpu_id);
+    if (!cpu) {
+        error_setg(errp,
+                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid cpu-index %ld",
+                   socket_id, cluster_id, core_id, thread_id, cpu_id);
+        return NULL;
+    }
+
+    return DEVICE(cpu);
+}
+
+static DeviceState *
+virt_find_device(DeviceListener *listener, const QDict *opts, Error **errp)
+{
+    const char *typename;
+
+    g_assert(opts);
+
+    typename = qdict_get_try_str(opts, "driver");
+    if (!typename)
+    {
+        error_setg(errp, "no driver specified");
+        return NULL;
+    }
+
+    if (cpu_typename_is_a(typename, TYPE_ARM_CPU)) {
+        return virt_find_cpu(opts, errp);
+    }
+
+    return NULL;
+}
+
 static void virt_park_cpu_in_userspace(CPUState *cs)
 {
     /* we don't want to migrate 'disabled' vCPU state(even if realized) */
@@ -2544,6 +2627,9 @@ static void machvirt_init(MachineState *machine)
     }
 
     create_fdt(vms);
+
+    vms->device_listener.find_device = virt_find_device;
+    device_listener_register(&vms->device_listener);
 
     assert(possible_cpus->len == max_cpus);
     for (n = 0; n < possible_cpus->len; n++) {

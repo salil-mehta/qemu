@@ -854,6 +854,17 @@ ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model);
 char *cpu_model_from_type(const char *typename);
 
 /**
+ * cpu_typename_is_a:
+ * @typename: QOM type name to check (e.g. "host-arm-cpu").
+ * @base_typename: Base QOM typename to test against (e.g. TYPE_ARM_CPU).
+ *
+ * Return: true if @typename names a class that is-a @base_typename, else false.
+ *
+ * Notes: Safe for common code; depends only on QOM (no target headers).
+ */
+bool cpu_typename_is_a(const char *typename, const char *base_typename);
+
+/**
  * cpu_create:
  * @typename: The CPU type.
  *
