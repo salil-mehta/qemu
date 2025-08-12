@@ -40,6 +40,7 @@ system_ss.add(files(
   'numa.c',
   'qdev-fw.c',
   'qdev-hotplug.c',
+  'powerstate.c',
   'qdev-properties-system.c',
   'reset.c',
   'sysbus.c',
