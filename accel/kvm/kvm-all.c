@@ -460,7 +460,7 @@ static void kvm_reset_parked_vcpus(KVMState *s)
  *
  * @returns: 0 when success, errno (<0) when failed.
  */
-static int kvm_create_vcpu(CPUState *cpu)
+int kvm_create_vcpu(CPUState *cpu)
 {
     unsigned long vcpu_id = kvm_arch_vcpu_id(cpu);
     KVMState *s = kvm_state;
