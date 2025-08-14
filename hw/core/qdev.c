@@ -633,6 +633,64 @@ static bool device_get_hotplugged(Object *obj, Error **errp)
     return dev->hotplugged;
 }
 
+static int device_get_admin_power_state(Object *obj, Error **errp)
+{
+    return DEVICE(obj)->admin_power_state;
+}
+
+static void
+device_set_admin_power_state(Object *obj, int new_state, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+
+    if (!dc->admin_power_state_supported) {
+        error_setg(errp, "Device '%s' admin power state change not supported",
+                   object_get_typename(obj));
+        return;
+    }
+
+    switch (new_state) {
+    case DEVICE_ADMIN_POWER_STATE_DISABLED: {
+
+        /*
+         * TBD: Operational state transition triggered by administrative action.
+         * Powering off the realized device either synchronously or via OSPM.
+         */
+
+        /*
+         * Devices may reach this point before fully operational. Only update
+         * the default admin power state; operational transitions do not apply
+         * at this stage.
+         */
+        qatomic_set(&dev->admin_power_state,
+                     DEVICE_ADMIN_POWER_STATE_DISABLED);
+        smp_wmb();
+        break;
+    }
+    case DEVICE_ADMIN_POWER_STATE_ENABLED: {
+        /*
+         * TBD: Operational state transition triggered by administrative action.
+         * Powering on the device and restoring migration registration.
+         */
+
+        /*
+         * Devices may reach this point before fully operational. Only update
+         * the default admin power state; operational transitions do not apply
+         * at this stage.
+         */
+        qatomic_set(&dev->admin_power_state,
+                     DEVICE_ADMIN_POWER_STATE_ENABLED);
+        smp_wmb();
+        break;
+    }
+    default:
+        error_setg(errp, "Invalid admin power state %d for device '%s'",
+                   new_state, dev->id);
+        break;
+    }
+}
+
 static void device_initfn(Object *obj)
 {
     DeviceState *dev = DEVICE(obj);
@@ -644,6 +702,7 @@ static void device_initfn(Object *obj)
 
     dev->instance_id_alias = -1;
     dev->realized = false;
+    dev->admin_power_state = DEVICE_ADMIN_POWER_STATE_ENABLED;
     dev->allow_unplug_during_migration = false;
 
     QLIST_INIT(&dev->gpios);
@@ -731,6 +790,15 @@ device_vmstate_if_get_id(VMStateIf *obj)
     return qdev_get_dev_path(dev);
 }
 
+static const QEnumLookup device_admin_power_state_lookup = {
+    .array = (const char *const[]) {
+        [DEVICE_ADMIN_POWER_STATE_ENABLED]  = "enabled",
+        [DEVICE_ADMIN_POWER_STATE_REMOVED]  = "removed",
+        [DEVICE_ADMIN_POWER_STATE_DISABLED] = "disabled",
+    },
+    .size = DEVICE_ADMIN_POWER_STATE_MAX,
+};
+
 static void device_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
@@ -765,6 +833,11 @@ static void device_class_init(ObjectClass *class, const void *data)
                                    device_get_hotpluggable, NULL);
     object_class_property_add_bool(class, "hotplugged",
                                    device_get_hotplugged, NULL);
+    object_class_property_add_enum(class, "admin_power_state",
+                                   "DeviceAdminPowerState",
+                                   &device_admin_power_state_lookup,
+                                   device_get_admin_power_state,
+                                   device_set_admin_power_state);
     object_class_property_add_link(class, "parent_bus", TYPE_BUS,
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }
