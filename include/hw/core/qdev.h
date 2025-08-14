@@ -160,6 +160,7 @@ struct DeviceClass {
      */
     bool user_creatable;
     bool hotpluggable;
+    bool admin_power_state_supported;
 
     /* callbacks */
     /**
@@ -214,6 +215,55 @@ typedef QLIST_HEAD(, NamedClockList) NamedClockListHead;
 typedef QLIST_HEAD(, BusState) BusStateHead;
 
 /**
+ * enum DeviceAdminPowerState - Administrative control states for a device
+ *
+ * This enum defines abstract administrative states used by QEMU to enable,
+ * disable, or logically remove a device from the virtual machine. These
+ * states reflect administrative control over a device's power availability
+ * and presence in the system. These administrative states are distinct from
+ * runtime operational power states (e.g., PSCI states for ARM CPUs). They
+ * represent administrative *policy* rather than physical, electrical, or
+ * functional state.
+ *
+ * Administrative state is managed externally "via QMP, firmware, or other
+ * host-side policy agents" and acts as a gating policy that determines
+ * whether guest software is permitted to interact with the device. Most
+ * devices default to the ENABLED state unless explicitly disabled or removed.
+ *
+ * Changing a device administrative state may directly or indirectly affect
+ * its operational behavior. For example, a DISABLED device will reject guest
+ * attempts to power it on or transition it out of a suspended state. Not all
+ * devices support dynamic transitions between administrative states.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_ENABLED:
+ *     The device is administratively enabled (i.e., logically present and
+ *     permitted to operate). Guest software may change its operational state
+ *     (e.g., activate, deactivate, suspend) within allowed architectural
+ *     semantics. This is the default state for most devices unless explicitly
+ *     disabled or unplugged.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_DISABLED:
+ *     The device is administratively disabled. It remains logically present
+ *     but is blocked from functional operation. Guest-initiated transitions
+ *     are either suppressed or ignored. This is typically used to enforce
+ *     shutdown, deny execution, or offline the device without removing it.
+ *
+ * - DEVICE_ADMIN_POWER_STATE_REMOVED:
+ *     The device has been logically removed (e.g., via hot-unplug). It is no
+ *     longer considered present or visible to the guest. This state exists
+ *     for representational or transitional purposes only. In most cases,
+ *     once removed, the corresponding DeviceState object is destroyed and
+ *     no longer tracked. This concept may not apply to some devices as
+ *     architectural limitations might make unplug not meaningful.
+ */
+typedef enum DeviceAdminPowerState {
+    DEVICE_ADMIN_POWER_STATE_ENABLED = 0,
+    DEVICE_ADMIN_POWER_STATE_DISABLED,
+    DEVICE_ADMIN_POWER_STATE_REMOVED,
+    DEVICE_ADMIN_POWER_STATE_MAX
+} DeviceAdminPowerState;
+
+/**
  * struct DeviceState - common device state, accessed with qdev helpers
  *
  * This structure should not be accessed directly.  We declare it here
@@ -236,6 +286,10 @@ struct DeviceState {
      * @realized: has device been realized?
      */
     bool realized;
+    /**
+     * @admin_power_state: device administrative power state
+     */
+    DeviceAdminPowerState admin_power_state;
     /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
