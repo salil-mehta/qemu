@@ -118,6 +118,20 @@ bool device_is_dynamic_sysbus(MachineClass *mc, DeviceState *dev);
 MemoryRegion *machine_consume_memdev(MachineState *machine,
                                      HostMemoryBackend *backend);
 
+/*
+ * machine_get_possible_cpu:
+ * @cpu_index: logical cpu_index to search for
+ *
+ * Return a CPUState* for the CPU with the given logical cpu_index.
+ * The slot index in possible_cpus[] is always sequential, but
+ * cpu_index values may not be sequential depending on machine
+ * implementation (e.g. with hotplug/unplug). Therefore, this
+ * function must scan the list to find a match.
+ *
+ * Returns: pointer to CPUState, or NULL if not found.
+ */
+CPUState *machine_get_possible_cpu(int64_t cpu_index);
+
 /**
  * CPUArchId:
  * @arch_id - architecture-dependent CPU ID of present or possible CPU
