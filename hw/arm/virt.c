@@ -2991,6 +2991,7 @@ static void machvirt_init(MachineState *machine)
         error_report("CPU type '%s' not registered", machine->cpu_type);
         exit(1);
     }
+    dc->admin_power_state_supported = mc->has_online_capable_cpus;
 
     /* uses smp.max_cpus to initialize all possible vCPUs */
     possible_cpus = mc->possible_cpu_arch_ids(machine);
