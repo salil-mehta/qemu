@@ -326,6 +326,37 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
                                     errp));
 }
 
+int qdev_get_admin_power_state(DeviceState *dev)
+{
+    DeviceClass *dc;
+
+    if (!dev) {
+        return DEVICE_ADMIN_POWER_STATE_REMOVED;
+    }
+
+    dc = DEVICE_GET_CLASS(dev);
+    if (dc->admin_power_state_supported) {
+        return object_property_get_enum(OBJECT(dev), "admin_power_state",
+                                        "DeviceAdminPowerState", NULL);
+    }
+
+    return DEVICE_ADMIN_POWER_STATE_ENABLED;
+}
+
+bool qdev_check_enabled(DeviceState *dev)
+{
+   /*
+    * if device supports power state transitions, check if it is not in
+    * 'disabled' state.
+    */
+    DeviceAdminPowerState state = qdev_get_admin_power_state(dev);
+    if (state != DEVICE_ADMIN_POWER_STATE_ENABLED) {
+        return false;
+    }
+
+    return true;
+}
+
 bool qdev_machine_modified(void)
 {
     return qdev_hot_added || qdev_hot_removed;
