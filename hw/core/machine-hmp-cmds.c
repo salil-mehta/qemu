@@ -107,6 +107,68 @@ void hmp_hotpluggable_cpus(Monitor *mon, const QDict *qdict)
     qapi_free_HotpluggableCPUList(saved);
 }
 
+void hmp_info_cpus_powerstate(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+    CPUPowerStateInfoList *list = qmp_query_cpus_power_state(&err);
+    CPUPowerStateInfoList *entry = list;
+
+    if (hmp_handle_error(mon, err)) {
+        return;
+    }
+
+    monitor_printf(mon, "CPUs Power State Info:\n");
+
+    while (entry) {
+        CPUPowerStateInfo *cpu = entry->value;
+
+        monitor_printf(mon, "  CPU ID: %" PRIi64 "\n", cpu->id);
+
+        if (cpu->has_socket_id) {
+            monitor_printf(mon, "    socket-id: %" PRIi64 "\n", cpu->socket_id);
+        }
+        if (cpu->has_cluster_id) {
+            monitor_printf(mon, "    cluster-id: %" PRIi64 "\n", cpu->cluster_id);
+        }
+        if (cpu->has_core_id) {
+            monitor_printf(mon, "    core-id: %" PRIi64 "\n", cpu->core_id);
+        }
+        if (cpu->has_thread_id) {
+            monitor_printf(mon, "    thread-id: %" PRIi64 "\n", cpu->thread_id);
+        }
+        if (cpu->has_die_id) {
+            monitor_printf(mon, "    die-id: %" PRIi64 "\n", cpu->die_id);
+        }
+        if (cpu->has_module_id) {
+            monitor_printf(mon, "    module-id: %" PRIi64 "\n", cpu->module_id);
+        }
+        if (cpu->has_book_id) {
+            monitor_printf(mon, "    book-id: %" PRIi64 "\n", cpu->book_id);
+        }
+        if (cpu->has_drawer_id) {
+            monitor_printf(mon, "    drawer-id: %" PRIi64 "\n", cpu->drawer_id);
+        }
+        if (cpu->has_node_id) {
+            monitor_printf(mon, "    node-id: %" PRIi64 "\n", cpu->node_id);
+        }
+        if (cpu->has_vcpus_count) {
+            monitor_printf(mon, "    vcpus-count: %" PRIi64 "\n", cpu->vcpus_count);
+        }
+        if (cpu->qom_path) {
+            monitor_printf(mon, "    qom-path: \"%s\"\n", cpu->qom_path);
+        }
+
+        monitor_printf(mon, "    admin-state: \"%s\"\n",
+                       CPUAdminPowerState_str(cpu->admin_state));
+        monitor_printf(mon, "    oper-state: \"%s\"\n",
+                       CPUOperPowerState_str(cpu->oper_state));
+
+        entry = entry->next;
+    }
+
+    qapi_free_CPUPowerStateInfoList(list);
+}
+
 void hmp_info_memdev(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;

@@ -9,6 +9,7 @@
 #include "qemu/rcu_queue.h"
 #include "qom/object.h"
 #include "hw/core/hotplug.h"
+#include "hw/core/powerstate.h"
 #include "hw/core/resettable.h"
 
 /**
@@ -563,6 +564,16 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
  * Return: true on success, else false setting @errp with error
  */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
+
+/*
+ * qdev_get_qom_access_path - Return a QOM path that can be used to access @dev
+ *
+ * If @dev is managed through an admin link, return that link path.
+ * Otherwise return the device's canonical QOM path.
+ *
+ * The returned string must be freed with g_free().
+ */
+char *qdev_get_qom_access_path(DeviceState *dev);
 
 /**
  * qdev_disable - Initiate administrative disablement and power-off of device

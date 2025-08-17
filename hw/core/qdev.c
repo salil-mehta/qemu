@@ -334,6 +334,28 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
+char *qdev_get_qom_access_path(DeviceState *dev)
+{
+    Object *container;
+    g_autofree char *container_path = NULL;
+
+    if (!qdev_check_enabled(dev)) {
+        return NULL;
+    }
+
+    if (dev->admin_link_name) {
+        container = machine_get_container("peripheral");
+        container_path = object_get_canonical_path(container);
+        if (!container_path) {
+            return NULL;
+        }
+
+        return g_strdup_printf("%s/%s", container_path, dev->admin_link_name);
+    }
+
+    return object_get_canonical_path(OBJECT(dev));
+}
+
 static bool
 qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
 {
