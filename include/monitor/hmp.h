@@ -161,6 +161,7 @@ void hmp_rocker_of_dpa_flows(MonitorHMP *hmp, const QDict *qdict);
 void hmp_rocker_of_dpa_groups(MonitorHMP *hmp, const QDict *qdict);
 void hmp_info_dump(MonitorHMP *hmp, const QDict *qdict);
 void hmp_hotpluggable_cpus(MonitorHMP *hmp, const QDict *qdict);
+void hmp_info_cpus_powerstate(Monitor *mon, const QDict *qdict);
 void hmp_info_vm_generation_id(MonitorHMP *hmp, const QDict *qdict);
 void hmp_info_memory_size_summary(MonitorHMP *hmp, const QDict *qdict);
 void hmp_info_replay(MonitorHMP *hmp, const QDict *qdict);
