@@ -13,6 +13,7 @@
 #include "qemu/osdep.h"
 #include "hw/powerstate.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
 #include "hw/boards.h"
 
 PowerStateHandler *powerstate_handler(DeviceState *dev)
@@ -27,12 +28,13 @@ PowerStateHandler *powerstate_handler(DeviceState *dev)
     return NULL;
 }
 
-DeviceOperPowerState get_oper_power_state(DeviceState *dev, Error **errp)
+DeviceOperPowerState qdev_get_oper_power_state(DeviceState *dev)
 {
-    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_GET_CLASS(dev);
+    PowerStateHandler *h = powerstate_handler(dev);
+    PowerStateHandlerClass *pshc = h ? POWERSTATE_HANDLER_GET_CLASS(h) : NULL;
 
     if (pshc && pshc->get_oper_state) {
-        return pshc->get_oper_state(dev, errp);
+        return pshc->get_oper_state(dev, &error_warn);
     }
 
     return DEVICE_OPER_POWER_STATE_UNKNOWN;

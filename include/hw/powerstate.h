@@ -149,7 +149,7 @@ struct PowerStateHandlerClass {
 
 PowerStateHandler *powerstate_handler(DeviceState *dev);
 
-DeviceOperPowerState get_oper_power_state(DeviceState *dev, Error **errp);
+DeviceOperPowerState qdev_get_oper_power_state(DeviceState *dev);
 
 void handle_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
                         Error **errp);

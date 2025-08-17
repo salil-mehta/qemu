@@ -19,7 +19,7 @@ PowerStateHandler *powerstate_handler(DeviceState *dev)
     return NULL;
 }
 
-DeviceOperPowerState get_oper_power_state(DeviceState *dev, Error **errp)
+DeviceOperPowerState qdev_get_oper_power_state(DeviceState *dev)
 {
     return DEVICE_OPER_POWER_STATE_UNKNOWN;
 }
