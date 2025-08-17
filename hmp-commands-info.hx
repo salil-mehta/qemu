@@ -766,6 +766,38 @@ ERST
 SRST
   ``info hotpluggable-cpus``
     Show information about hotpluggable CPUs
+
+ERST
+
+{
+    .name       = "cpus-powerstate",
+    .args_type  = "",
+    .params     = "",
+    .help       = "Show administrative and operational CPU states",
+    .cmd        = hmp_info_cpus_powerstate,
+    .flags      = "p",
+},
+
+SRST
+  ``info cpus-powerstate``
+    Display administrative (policy) and operational (runtime) power
+    states for each virtual CPU.
+
+    Administrative states:
+      - ``Enabled``  : CPU is available to the guest
+      - ``Disabled`` : CPU is present but administratively blocked
+      - ``Removed``  : CPU is not present (hidden from the guest)
+
+    Operational states (if available):
+      - ``On``       : CPU is powered on and executing
+      - ``Standby``  : CPU is idle/low-power and can resume on an event
+      - ``Off``      : CPU is powered off or guest-offlined
+      - ``Unknown``  : State cannot be determined (e.g. very early init,
+                       teardown, transient hotplug/hotremove window, or
+                       target/platform does not expose a queryable state)
+
+    The administrative state constrains which operational states are
+    possible.
 ERST
 
     {
