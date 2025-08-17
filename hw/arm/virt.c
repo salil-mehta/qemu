@@ -2080,6 +2080,21 @@ virt_cpu_post_poweroff(PowerStateHandler *handler, DeviceState *dev,
     virt_park_cpu_in_userspace(cs);
 }
 
+static
+DeviceOperPowerState virt_cpu_get_oper_state(DeviceState *dev, Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(CPU(dev));
+
+    switch (cpu->power_state) {
+    case PSCI_ON:
+        return DEVICE_OPER_POWER_STATE_ON;
+    case PSCI_OFF:
+        return DEVICE_OPER_POWER_STATE_OFF;
+    default:
+        return DEVICE_OPER_POWER_STATE_UNKNOWN;
+    }
+}
+
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
 {
     uint8_t clustersz;
@@ -2451,6 +2466,9 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
         object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
                                 NULL);
     }
+
+    /* set operational state of disabled CPUs as OFF */
+    ARM_CPU(cpuobj)->power_state = PSCI_OFF;
 
     /*
      * [!] Constraint: The ARM CPU architecture does not permit new CPUs
@@ -3517,6 +3535,19 @@ virt_machine_device_pre_poweron(PowerStateHandler *handler, DeviceState *dev,
     }
 }
 
+static DeviceOperPowerState
+virt_machine_get_device_oper_state(DeviceState *dev, Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        return virt_cpu_get_oper_state(dev, errp);
+    } else {
+        error_setg(errp, "can't get power state for unsupported device-type %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+
+    return DEVICE_OPER_POWER_STATE_UNKNOWN;
+}
+
 static void *
 virt_machine_powerstate_handler(MachineState *machine, DeviceState *dev)
 {
@@ -3672,6 +3703,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
     assert(!mc->get_powerstate_handler);
     mc->has_online_capable_cpus = true;
     mc->get_powerstate_handler = virt_machine_powerstate_handler;
+    pshc->get_oper_state = virt_machine_get_device_oper_state;
     pshc->request_poweroff = virt_machine_device_request_poweroff;
     pshc->post_poweroff = virt_machine_device_post_poweroff;
     pshc->pre_poweron = virt_machine_device_pre_poweron;

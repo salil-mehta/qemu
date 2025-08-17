@@ -158,6 +158,113 @@ HotpluggableCPUList *qmp_query_hotpluggable_cpus(Error **errp)
     return machine_query_hotpluggable_cpus(ms);
 }
 
+CPUPowerStateInfoList *qmp_query_cpus_power_state(Error **errp)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    CPUPowerStateInfoList *head = NULL;
+    CPUPowerStateInfoList **tail = &head;
+    CPUPowerStateInfo *info;
+    CPUState *cpu;
+
+    CPU_FOREACH_POSSIBLE(cpu, ms->possible_cpus) {
+        CPUArchId *arch_id = machine_get_possible_cpu_arch_id(cpu->cpu_index);
+        if (!arch_id) {
+            continue;
+        }
+
+        info = g_new0(CPUPowerStateInfo, 1);
+        info->id = cpu->cpu_index;
+
+        /* Optional topology fields */
+        if (arch_id->props.has_socket_id) {
+            info->socket_id = arch_id->props.socket_id;
+            info->has_socket_id = true;
+        }
+        if (arch_id->props.has_cluster_id) {
+            info->cluster_id = arch_id->props.cluster_id;
+            info->has_cluster_id = true;
+        }
+        if (arch_id->props.has_core_id) {
+            info->core_id = arch_id->props.core_id;
+            info->has_core_id = true;
+        }
+        if (arch_id->props.has_thread_id) {
+            info->thread_id = arch_id->props.thread_id;
+            info->has_thread_id = true;
+        }
+        if (arch_id->props.has_die_id) {
+            info->die_id = arch_id->props.die_id;
+            info->has_die_id = true;
+        }
+        if (arch_id->props.has_module_id) {
+            info->module_id = arch_id->props.module_id;
+            info->has_module_id = true;
+        }
+        if (arch_id->props.has_book_id) {
+            info->book_id = arch_id->props.book_id;
+            info->has_book_id = true;
+        }
+        if (arch_id->props.has_drawer_id) {
+            info->drawer_id = arch_id->props.drawer_id;
+            info->has_drawer_id = true;
+        }
+        if (arch_id->props.has_node_id) {
+            info->node_id = arch_id->props.node_id;
+            info->has_node_id = true;
+        }
+
+        info->vcpus_count = arch_id->vcpus_count;
+        info->has_vcpus_count = true;
+
+        info->qom_path = object_get_canonical_path(OBJECT(cpu));
+
+        /* Determine current power state */
+        switch (qdev_get_admin_power_state(DEVICE(cpu))) {
+        case DEVICE_ADMIN_POWER_STATE_ENABLED:
+            info->admin_state = CPU_ADMIN_POWER_STATE_ENABLED;
+            break;
+        case DEVICE_ADMIN_POWER_STATE_DISABLED:
+            info->admin_state = CPU_ADMIN_POWER_STATE_DISABLED;
+            break;
+        case DEVICE_ADMIN_POWER_STATE_REMOVED:
+            info->admin_state = CPU_ADMIN_POWER_STATE_REMOVED;
+            break;
+        default:
+            /* This should never be hit */
+            g_assert_not_reached();
+            break;
+        }
+
+        /* Determine current operational power state */
+        switch (qdev_get_oper_power_state(DEVICE(cpu))) {
+        case DEVICE_OPER_POWER_STATE_ON:
+            info->oper_state = CPU_OPER_POWER_STATE_ON;
+            break;
+        case DEVICE_OPER_POWER_STATE_OFF:
+            info->oper_state = CPU_OPER_POWER_STATE_OFF;
+            break;
+        case DEVICE_OPER_POWER_STATE_STANDBY:
+            info->oper_state = CPU_OPER_POWER_STATE_STANDBY;
+            break;
+        case DEVICE_OPER_POWER_STATE_UNKNOWN:
+            info->oper_state = CPU_OPER_POWER_STATE_UNKNOWN;
+            break;
+        default:
+            /* This should never be hit */
+            g_assert_not_reached();
+            break;
+        }
+
+        /* Add to result list */
+        CPUPowerStateInfoList *entry = g_new0(CPUPowerStateInfoList, 1);
+        entry->value = info;
+        *tail = entry;
+        tail = &entry->next;
+    }
+
+    return head;
+}
+
 void qmp_set_numa_node(NumaOptions *cmd, Error **errp)
 {
     if (phase_check(PHASE_MACHINE_INITIALIZED)) {
