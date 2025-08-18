@@ -23,11 +23,13 @@
 #include "migration/vmstate.h"
 #include "qemu/error-report.h"
 #include "system/runstate.h"
+#include "hw/powerstate.h"
 
 static const uint32_t ged_supported_events[] = {
     ACPI_GED_MEM_HOTPLUG_EVT,
     ACPI_GED_PWR_DOWN_EVT,
     ACPI_GED_NVDIMM_HOTPLUG_EVT,
+    ACPI_GED_CPU_POWERSTATE_EVT,
     ACPI_GED_CPU_HOTPLUG_EVT,
     ACPI_GED_PCI_HOTPLUG_EVT,
 };
@@ -111,6 +113,9 @@ void build_ged_aml(Aml *table, const char *name, HotplugHandler *hotplug_dev,
             case ACPI_GED_MEM_HOTPLUG_EVT:
                 aml_append(if_ctx, aml_call0(MEMORY_DEVICES_CONTAINER "."
                                              MEMORY_SLOT_SCAN_METHOD));
+                break;
+            case ACPI_GED_CPU_POWERSTATE_EVT:
+                aml_append(if_ctx, aml_call0(AML_GED_EVT_CPUPS_SCAN_METHOD));
                 break;
             case ACPI_GED_CPU_HOTPLUG_EVT:
                 aml_append(if_ctx, aml_call0(AML_GED_EVT_CPU_SCAN_METHOD));
@@ -302,12 +307,55 @@ static void acpi_ged_unplug_cb(HotplugHandler *hotplug_dev,
     }
 }
 
+static void
+acpi_ged_poweron_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(handler);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_device_check_cb(&s->cpuospm_state, dev,
+                                  ACPI_CPU_POWERSTATE_STATUS, errp);
+    } else {
+        error_setg(errp, "acpi: can't power-on unsupported device type %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+acpi_ged_poweroff_request_cb(PowerStateHandler *handler, DeviceState *dev,
+                             Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(handler);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_eject_request_cb(&s->cpuospm_state, dev,
+                                  ACPI_CPU_POWERSTATE_STATUS, errp);
+    } else {
+        error_setg(errp, "acpi: power-off request for unsupported device"
+                   " type: %s", object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+acpi_ged_poweroff_cb(PowerStateHandler *handler, DeviceState *dev, Error **errp)
+{
+    AcpiGedState *s = ACPI_GED(handler);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        acpi_cpu_eject_cb(&s->cpuospm_state, dev, errp);
+    } else {
+        error_setg(errp, "acpi: can't power-off unsupported device type %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
 static void acpi_ged_ospm_status(AcpiDeviceIf *adev, ACPIOSTInfoList ***list)
 {
     AcpiGedState *s = ACPI_GED(adev);
 
     acpi_memory_ospm_status(&s->memhp_state, list);
     acpi_cpu_ospm_status(&s->cpuhp_state, list);
+    acpi_cpus_ospm_status(&s->cpuospm_state, list);
 }
 
 static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
@@ -322,6 +370,8 @@ static void acpi_ged_send_event(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
         sel = ACPI_GED_PWR_DOWN_EVT;
     } else if (ev & ACPI_NVDIMM_HOTPLUG_STATUS) {
         sel = ACPI_GED_NVDIMM_HOTPLUG_EVT;
+    } else if (ev & ACPI_CPU_POWERSTATE_STATUS) {
+        sel = ACPI_GED_CPU_POWERSTATE_EVT;
     } else if (ev & ACPI_CPU_HOTPLUG_STATUS) {
         sel = ACPI_GED_CPU_HOTPLUG_EVT;
     } else if (ev & ACPI_PCI_HOTPLUG_STATUS) {
@@ -361,20 +411,31 @@ static const VMStateDescription vmstate_memhp_state = {
     }
 };
 
-static bool cpuhp_needed(void *opaque)
+static bool cpu_state_needed(void *opaque)
 {
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
-    return mc->has_hotpluggable_cpus;
+    return (mc->has_online_capable_cpus || mc->has_hotpluggable_cpus);
 }
 
 static const VMStateDescription vmstate_cpuhp_state = {
     .name = "acpi-ged/cpuhp",
     .version_id = 1,
     .minimum_version_id = 1,
-    .needed = cpuhp_needed,
+    .needed = cpu_state_needed,
     .fields      = (VMStateField[]) {
         VMSTATE_CPU_HOTPLUG(cpuhp_state, AcpiGedState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_cpuospm_state = {
+    .name = "acpi-ged/cpu-ospm",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = cpu_state_needed,
+    .fields      = (VMStateField[]) {
+        VMSTATE_CPU_OSPM_STATE(cpuospm_state, AcpiGedState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -447,6 +508,7 @@ static const VMStateDescription vmstate_acpi_ged = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_memhp_state,
         &vmstate_cpuhp_state,
+        &vmstate_cpuospm_state,
         &vmstate_ghes_state,
         &vmstate_pcihp_state,
         NULL
@@ -461,6 +523,8 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
     uint32_t ged_events;
     int i;
 
+    s->cpuospm_state.acpi_dev = dev;
+
     if (pcihp_state->use_acpi_hotplug_bridge) {
         s->ged_event_bitmap |= ACPI_GED_PCI_HOTPLUG_EVT;
     }
@@ -474,6 +538,18 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
         }
 
         switch (event) {
+        case ACPI_GED_CPU_POWERSTATE_EVT:
+            /* initialize regions related to CPU OSPM interface to be used
+             * during notification of the power-on,off events to the OSPM
+             */
+            memory_region_init(&s->container_cpuospm, OBJECT(dev),
+                               ACPI_CPUOSPM_REGION_NAME,
+                               ACPI_CPU_OSPM_IF_REG_LEN);
+            sysbus_init_mmio(sbd, &s->container_cpuospm);
+            acpi_cpu_ospm_state_interface_init(&s->container_cpuospm,
+                                               OBJECT(dev),
+                                               &s->cpuospm_state, 0);
+            break;
         case ACPI_GED_CPU_HOTPLUG_EVT:
             /* initialize CPU Hotplug related regions */
             memory_region_init(&s->container_cpuhp, OBJECT(dev),
@@ -544,6 +620,7 @@ static void acpi_ged_class_init(ObjectClass *class, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(class);
+    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_CLASS(class);
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_CLASS(class);
     ResettableClass *rc = RESETTABLE_CLASS(class);
     AcpiGedClass *gedc = ACPI_GED_CLASS(class);
@@ -560,6 +637,10 @@ static void acpi_ged_class_init(ObjectClass *class, const void *data)
     resettable_class_set_parent_phases(rc, NULL, ged_reset_hold, NULL,
                                        &gedc->parent_phases);
 
+    pshc->poweron = acpi_ged_poweron_cb;
+    pshc->poweroff_request = acpi_ged_poweroff_request_cb;
+    pshc->poweroff = acpi_ged_poweroff_cb;
+
     adevc->ospm_status = acpi_ged_ospm_status;
     adevc->send_event = acpi_ged_send_event;
 }
@@ -573,6 +654,7 @@ static const TypeInfo acpi_ged_info = {
     .class_size    = sizeof(AcpiGedClass),
     .interfaces = (const InterfaceInfo[]) {
         { TYPE_HOTPLUG_HANDLER },
+        { TYPE_POWERSTATE_HANDLER },
         { TYPE_ACPI_DEVICE_IF },
         { }
     }
