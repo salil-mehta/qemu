@@ -64,6 +64,7 @@
 #include "hw/acpi/ghes.h"
 #include "hw/acpi/cpu.h"
 #include "hw/acpi/pcihp.h"
+#include "hw/acpi/cpu_ospm_interface.h"
 #include "qom/object.h"
 
 #define ACPI_POWER_BUTTON_DEVICE "PWRB"
@@ -92,6 +93,7 @@ OBJECT_DECLARE_TYPE(AcpiGedState, AcpiGedClass, ACPI_GED)
 #define AML_GED_EVT_REG "EREG"
 #define AML_GED_EVT_SEL "ESEL"
 #define AML_GED_EVT_CPU_SCAN_METHOD "\\_SB.GED.CSCN"
+#define AML_GED_EVT_CPUPS_SCAN_METHOD "\\_SB.GED.PSCN"  /* Power State Scan */
 
 /*
  * Platforms need to specify the GED event bitmap
@@ -104,6 +106,7 @@ OBJECT_DECLARE_TYPE(AcpiGedState, AcpiGedClass, ACPI_GED)
 #define ACPI_GED_CPU_HOTPLUG_EVT    0x8
 #define ACPI_GED_PCI_HOTPLUG_EVT    0x10
 #define ACPI_GED_ERROR_EVT          0x20
+#define ACPI_GED_CPU_POWERSTATE_EVT 0x40
 
 typedef struct GEDState {
     MemoryRegion evt;
@@ -113,6 +116,7 @@ typedef struct GEDState {
 
 #define ACPI_PCIHP_REGION_NAME "pcihp container"
 #define ACPI_MEMHP_REGION_NAME "memhp container"
+#define ACPI_CPUOSPM_REGION_NAME "cpuospm container"
 
 struct AcpiGedState {
     SysBusDevice parent_obj;
@@ -122,6 +126,8 @@ struct AcpiGedState {
     MemoryRegion container_cpuhp;
     AcpiPciHpState pcihp_state;
     MemoryRegion container_pcihp;
+    AcpiCpuOspmState cpuospm_state;
+    MemoryRegion container_cpuospm;
     GEDState ged_state;
     uint32_t ged_event_bitmap;
     qemu_irq irq;
