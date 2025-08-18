@@ -326,6 +326,35 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
                                     errp));
 }
 
+void qdev_sync_disable(DeviceState *dev, Error **errp)
+{
+    g_assert(dev);
+    g_assert(powerstate_handler(dev));
+
+    /*
+     * Administrative disable triggered either after OSPM completes _EJx
+     * (post Notify(..., 0x03)), or due to lack of async shutdown support.
+     *
+     * Device may still appear in ACPI namespace but remains disabled at
+     * the platform level. Guest cannot re-enable it until host allows.
+     */
+
+    /* Perform operational shutdown */
+    device_poweroff(dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* Mark the device administratively disabled */
+    qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
+    smp_wmb();
+
+    /* Remove from migration stream */
+    if (qdev_get_vmsd(dev)) {
+        vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
+    }
+}
+
 bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
 {
     g_assert(dev);
@@ -708,6 +737,7 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    DeviceAdminPowerState old_state;
 
     if (!dc->admin_power_state_supported) {
         error_setg(errp, "Device '%s' admin power state change not supported",
@@ -715,29 +745,67 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         return;
     }
 
+    g_assert(powerstate_handler(dev));
+
+    old_state = qatomic_read(&dev->admin_power_state);
+
     switch (new_state) {
     case DEVICE_ADMIN_POWER_STATE_DISABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_DISABLED) {
+            break;
+        }
 
         /*
-         * TBD: Operational state transition triggered by administrative action.
-         * Powering off the realized device either synchronously or via OSPM.
+         * Operational state transition triggered by administrative action.
+         * Powering off the device either synchronously or via OSPM.
          */
-
-        /*
-         * Devices may reach this point before fully operational. Only update
-         * the default admin power state; operational transitions do not apply
-         * at this stage.
-         */
-        qatomic_set(&dev->admin_power_state,
-                     DEVICE_ADMIN_POWER_STATE_DISABLED);
-        smp_wmb();
+        if (device_graceful_poweroff_supported(dev)) {
+            /* Graceful shutdown via guest coordination */
+            device_poweroff_request(dev, errp);
+            if (*errp) {
+                return;
+            }
+            /*
+             * Devices may reach this point before fully operational. Only
+             * update the default admin power state; operational transitions
+             * do not applyat this stage.
+             */
+            qatomic_set(&dev->admin_power_state,
+                        DEVICE_ADMIN_POWER_STATE_DISABLED);
+            smp_wmb();
+        } else {
+            /* Immediate shutdown within QEMU synchronously */
+            qdev_sync_disable(dev, errp);
+            if (*errp) {
+                return;
+            }
+        }
         break;
     }
     case DEVICE_ADMIN_POWER_STATE_ENABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_ENABLED) {
+            break;
+        }
+
         /*
-         * TBD: Operational state transition triggered by administrative action.
+         * Operational state transition triggered by administrative action.
          * Powering on the device and restoring migration registration.
          */
+        device_poweron(dev, errp);
+        if (*errp) {
+            return;
+        }
+
+        if (qdev_get_vmsd(dev)) {
+            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
+                                               VMSTATE_INSTANCE_ID_ANY,
+                                               qdev_get_vmsd(dev), dev,
+                                               dev->instance_id_alias,
+                                               dev->alias_required_for_version,
+                                               errp) < 0) {
+                return;
+            }
+        }
 
         /*
          * Devices may reach this point before fully operational. Only update
