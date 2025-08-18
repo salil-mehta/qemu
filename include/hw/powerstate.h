@@ -160,4 +160,10 @@ void device_poweroff(DeviceState *dev, Error **errp);
 void device_poweron(DeviceState *dev, Error **errp);
 
 void device_standby(DeviceState *dev, Error **errp);
+
+static inline bool device_graceful_poweroff_supported(DeviceState *dev)
+{
+    PowerStateHandler *h = powerstate_handler(dev);
+    return h && POWERSTATE_HANDLER_GET_CLASS(h)->poweroff_request;
+}
 #endif /* POWERSTATE_H */
