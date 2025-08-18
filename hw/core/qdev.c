@@ -326,6 +326,39 @@ bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
                                     errp));
 }
 
+void qdev_sync_disable(DeviceState *dev, Error **errp)
+{
+    PowerStateHandler *handler;
+
+    g_assert(dev);
+
+    handler = powerstate_handler(dev);
+    g_assert(handler);
+
+    /*
+     * Administrative disable triggered either after OSPM completes _EJx
+     * (post Notify(..., 0x03)), or due to lack of async shutdown support.
+     *
+     * Device may still appear in ACPI namespace but remains disabled at
+     * the platform level. Guest cannot re-enable it until host allows.
+     */
+
+    /* Perform operational shutdown */
+    handle_poweroff(handler, dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* Mark the device administratively disabled */
+    qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
+    smp_wmb();
+
+    /* Remove from migration stream */
+    if (qdev_get_vmsd(dev)) {
+        vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
+    }
+}
+
 bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
 {
     g_assert(dev);
@@ -708,6 +741,9 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    DeviceAdminPowerState old_state;
+    PowerStateHandlerClass *pshc;
+    PowerStateHandler *handler;
 
     if (!dc->admin_power_state_supported) {
         error_setg(errp, "Device '%s' admin power state change not supported",
@@ -715,13 +751,32 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         return;
     }
 
+    handler = powerstate_handler(dev);
+    g_assert(handler);
+
+    old_state = qatomic_read(&dev->admin_power_state);
+
     switch (new_state) {
     case DEVICE_ADMIN_POWER_STATE_DISABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_DISABLED) {
+            break;
+        }
 
         /*
-         * TBD: Operational state transition triggered by administrative action.
+         * Operational state transition triggered by administrative action.
          * Powering off the realized device either synchronously or via OSPM.
          */
+        pshc = POWERSTATE_HANDLER_GET_CLASS(handler);
+        if (pshc->poweroff_request && phase_check(PHASE_MACHINE_READY)) {
+            /* Graceful shutdown via guest coordination */
+            handle_poweroff_request(handler, dev, errp);
+        } else {
+            /* Immediate shutdown within QEMU synchronously */
+            qdev_sync_disable(dev, errp);
+        }
+        if (*errp) {
+            return;
+        }
 
         /*
          * Devices may reach this point before fully operational. Only update
@@ -734,10 +789,29 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         break;
     }
     case DEVICE_ADMIN_POWER_STATE_ENABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_ENABLED) {
+            break;
+        }
+
         /*
-         * TBD: Operational state transition triggered by administrative action.
+         * Operational state transition triggered by administrative action.
          * Powering on the device and restoring migration registration.
          */
+        handle_poweron(handler, dev, errp);
+        if (*errp) {
+            return;
+        }
+
+        if (qdev_get_vmsd(dev)) {
+            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
+                                               VMSTATE_INSTANCE_ID_ANY,
+                                               qdev_get_vmsd(dev), dev,
+                                               dev->instance_id_alias,
+                                               dev->alias_required_for_version,
+                                               errp) < 0) {
+                return;
+            }
+        }
 
         /*
          * Devices may reach this point before fully operational. Only update
