@@ -84,7 +84,7 @@ bool cpu_thread_is_idle(CPUState *cpu)
     if (cpu->stop || !cpu_work_list_empty(cpu)) {
         return false;
     }
-    if (cpu_is_stopped(cpu)) {
+    if (cpu_is_stopped(cpu) || cpu->parked) {
         return true;
     }
     if (!cpu->halted || cpu_has_work(cpu)) {
@@ -276,7 +276,7 @@ bool cpu_can_run(const CPUState *cpu)
     if (cpu->stop) {
         return false;
     }
-    if (cpu_is_stopped(cpu)) {
+    if (cpu_is_stopped(cpu) || cpu->parked) {
         return false;
     }
     return true;
