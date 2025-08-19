@@ -13,7 +13,6 @@
 #include "gicv3_internal.h"
 #include "target/arm/cpu.h"
 #include "qemu/log.h"
-#include "monitor/monitor.h"
 #include "qapi/visitor.h"
 
 void gicv3_set_gicv3state(CPUState *cpu, GICv3CPUState *s)
@@ -42,11 +41,7 @@ gicv3_set_gicc_accessibility(Object *obj, Visitor *v, const char *name,
     CPUState *cs = gcs->cpu;
     bool value;
 
-    visit_type_bool(v, name, &value, errp);
-
-    /* Block external attempts to set */
-    if (object_dynamic_cast(OBJECT(monitor_cur()), TYPE_MONITOR_QMP)) {
-        error_setg(errp, "Property 'gicc-accessible' is read-only externally");
+    if (!visit_type_bool(v, name, &value, errp)) {
         return;
     }
 
@@ -73,7 +68,7 @@ void gicv3_init_cpuif(GICv3State *s, Error **errp)
                             NULL, &s->cpu[i]);
 
         object_property_set_description(OBJECT(s), propname,
-            "Per-vCPU GICC interface accessibility (internal set only)");
+            "Per-vCPU GICC interface accessibility");
         agcc->init_cpu_reginfo(s->cpu[i].cpu, errp);
     }
 }

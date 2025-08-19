@@ -496,6 +496,7 @@ struct CPUState {
     bool created;
     bool stop;
     bool stopped;
+    bool parked;
 
     bool start_powered_off;
 
@@ -556,6 +557,7 @@ struct CPUState {
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
+    bool preserve_assigned_cpu_index;
     int cluster_index;
     uint32_t tcg_cflags;
     uint32_t halted;
@@ -1251,6 +1253,9 @@ void cpu_common_unrealize(CPUState *cpu);
 void cpu_exec_reset_hold(CPUState *cpu);
 
 extern const VMStateDescription vmstate_cpu_common;
+
+void cpu_vmstate_register(CPUState *cpu);
+void cpu_vmstate_unregister(CPUState *cpu);
 
 #define UNASSIGNED_CPU_INDEX -1
 #define UNASSIGNED_CLUSTER_INDEX -1

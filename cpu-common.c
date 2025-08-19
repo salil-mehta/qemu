@@ -103,7 +103,9 @@ void cpu_list_remove(CPUState *cpu)
     }
 
     QTAILQ_REMOVE_RCU(&cpus_queue, cpu, node);
-    cpu->cpu_index = UNASSIGNED_CPU_INDEX;
+    if (!cpu->preserve_assigned_cpu_index) {
+        cpu->cpu_index = UNASSIGNED_CPU_INDEX;
+    }
     cpu_list_generation_id++;
 }
 
