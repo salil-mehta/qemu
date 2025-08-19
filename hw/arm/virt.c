@@ -45,6 +45,7 @@
 #include "system/device_tree.h"
 #include "system/numa.h"
 #include "system/runstate.h"
+#include "system/reset.h"
 #include "system/tpm.h"
 #include "system/tcg.h"
 #include "system/kvm.h"
@@ -91,6 +92,8 @@
 #include "hw/cxl/cxl.h"
 #include "hw/cxl/cxl_host.h"
 #include "qemu/guest-random.h"
+#include "hw/powerstate.h"
+#include "arm-powerctl.h"
 
 static GlobalProperty arm_virt_compat[] = {
     { TYPE_VIRTIO_IOMMU_PCI, "aw-bits", "48" },
@@ -1400,7 +1403,7 @@ static FWCfgState *create_fw_cfg(const VirtMachineState *vms, AddressSpace *as)
     char *nodename;
 
     fw_cfg = fw_cfg_init_mem_wide(base + 8, base, 8, base + 16, as);
-    fw_cfg_add_i16(fw_cfg, FW_CFG_NB_CPUS, (uint16_t)ms->smp.cpus);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
 
     nodename = g_strdup_printf("/fw-cfg@%" PRIx64, base);
     qemu_fdt_add_subnode(ms->fdt, nodename);
@@ -1819,6 +1822,164 @@ void virt_machine_done(Notifier *notifier, void *data)
 
     virt_acpi_setup(vms);
     virt_build_smbios(vms);
+}
+
+static void
+virt_cpu_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    PowerStateHandlerClass *pshc;
+    CPUState *cs = CPU(dev);
+
+    /*
+     * Lazy realization path: bring the CPU to a realized state the first time
+     * it is powered on. Saves boot time; later power-ons skips this.
+     */
+    if (!dev->realized) {
+        qdev_realize(dev, NULL, errp);
+    } else {
+        /* Realized but disabled vCPUs lack a VMStateDescription; re-register */
+        cpu_vmstate_register(cs);
+        cpu_list_add(cs);
+    }
+
+    gicv3_mark_gicc_accessible(OBJECT(vms->gic), cs->cpu_index, errp);
+    if (*errp) {
+        error_setg(errp, "couldn't mark GICC accessibile for CPU %d",
+                   cs->cpu_index);
+        return;
+    }
+
+    /* update the firmware information for the next boot. */
+    vms->boot_cpus++;
+    if (vms->fw_cfg) {
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
+    }
+
+    /*
+     * Notify the guest that a CPU is powered-on(_STA.Ena = 1), triggering a
+     * Device Check (Notify(..., 0x80)) via GED. This prompts OSPM to
+     * re-evaluate ACPI _STA method.
+     *
+     * Only notify after the VM is ready i.e., the guest kernel is initialized.
+     * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
+     * so sending a notification is pointless.
+     */
+    if (phase_check(PHASE_MACHINE_READY) &&
+        !runstate_check(RUN_STATE_INMIGRATE)) {
+        pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+        pshc->poweron(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+        if (*errp) {
+            error_setg(errp, "failed to power-on CPU %d",
+                       cs->cpu_index);
+            return;
+        }
+    }
+
+    /*
+     * RFC: Resets for powered-off vCPUs (ACPI/UEFI path)
+     *
+     * On system reset, QEMU’s device-reset graph resets all realized CPUs,
+     * including those administratively disabled (PSCI CPU_OFF). This is
+     * existing behavior and is architecturally tolerable (CPU_OFF implies
+     * context loss), but it can look odd: a “powered-off” CPU receives a
+     * reset.
+     *
+     * Alternative (not implemented): gate resets for admin-OFF CPUs. This
+     * would require bypassing the generic device-reset path or teaching the
+     * CPU device to skip its own reset based on admin state. comments?
+     */
+
+    /*
+     * Guest Kernel/OSPM will issue PSCI CPU_ON, which performs the cold start
+     * (reset + entry state) for this CPU
+     */
+}
+
+static void
+virt_cpu_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
+                        Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    PowerStateHandlerClass *pshc;
+    ARMCPU *cpu = ARM_CPU(dev);
+    CPUState *cs = CPU(dev);
+
+    if (cs->cpu_index == first_cpu->cpu_index) {
+        error_setg(errp, "can't power-off  boot CPU (id=%d [%d:%d:%d:%d])",
+                   first_cpu->cpu_index, cpu->socket_id, cpu->cluster_id,
+                   cpu->core_id, cpu->thread_id);
+        return;
+    }
+
+    /*
+     * Check that we are not tearing down too early when no live state exists.
+     * This can happen in:
+     *  1. Lazy device realization
+     *  2. Use of '-device-set' at qemu prompt
+     *  3. Post-migration on the destination VM
+     */
+    if (!dev->realized) {
+        return;
+    }
+
+    if (!phase_check(PHASE_MACHINE_READY) ||
+        runstate_check(RUN_STATE_INMIGRATE)) {
+        cpu_vmstate_unregister(cs);
+        cpu_list_remove(cs);
+        return;
+    }
+
+    /*
+     * powering-off a CPU triggers an Eject Request (Notify(..., 0x03))
+     * via GED, prompting the OSPM to invoke _EJ0 for device removal handling.
+     */
+    pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+    pshc->poweroff_request(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+    if (*errp) {
+        error_setg(errp, "request failed to power-off CPU %d", cs->cpu_index);
+        return;
+    }
+}
+
+static void
+virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev, Error **errp)
+{
+    VirtMachineState *vms = VIRT_MACHINE(handler);
+    PowerStateHandlerClass *pshc;
+    CPUState *cs = CPU(dev);
+
+    /*
+     * Just in case we are here too early. Ignore admin power-off before
+     * realize; no live state to tear down.
+     */
+    if (!dev->realized) {
+        return;
+    }
+
+    /* we are here because OSPM has already offline'd CPU and issued EJ0 */
+    pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
+    pshc->poweroff(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
+    if (*errp) {
+        error_setg(errp, "failed to power-off CPU %d", cs->cpu_index);
+        return;
+    }
+
+    vms->boot_cpus--;
+    if (vms->fw_cfg) {
+        fw_cfg_modify_i16(vms->fw_cfg, FW_CFG_NB_CPUS, vms->boot_cpus);
+    }
+
+    gicv3_mark_gicc_inaccessible(OBJECT(vms->gic), cs->cpu_index, errp);
+    if (*errp) {
+        error_setg(errp, "couldn't mark GICC inaccessibile for CPU %d",
+                   cs->cpu_index);
+        return;
+    }
+
+    /* we don't want to migrate 'disabled' vCPU state(even if realized) */
+    cpu_vmstate_unregister(cs);
+    cpu_list_remove(cs);
 }
 
 static uint64_t virt_cpu_mp_affinity(VirtMachineState *vms, int idx)
@@ -3210,6 +3371,53 @@ static HotplugHandler *virt_machine_get_hotplug_handler(MachineState *machine,
     return NULL;
 }
 
+static void
+virt_machine_device_poweroff_request(PowerStateHandler *handler,
+                                     DeviceState *dev,
+                                     Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_poweroff_request(handler, dev, errp);
+    } else {
+        error_setg(errp, "power-off request for unsupported device-type: %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+virt_machine_device_poweroff(PowerStateHandler *handler, DeviceState *dev,
+                             Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_poweroff(handler, dev, errp);
+    } else {
+        error_setg(errp, "can't power-off unsupported device-type %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void
+virt_machine_device_poweron(PowerStateHandler *handler, DeviceState *dev,
+                            Error **errp)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        virt_cpu_poweron(handler, dev, errp);
+    } else {
+        error_setg(errp, "can't power-on unsupported device-type %s",
+                   object_get_typename(OBJECT(dev)));
+    }
+}
+
+static void *
+virt_machine_powerstate_handler(MachineState *machine, DeviceState *dev)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        return (void *)POWERSTATE_HANDLER(machine);
+    }
+
+    return NULL;
+}
+
 /*
  * for arm64 kvm_type [7-0] encodes the requested number of bits
  * in the IPA address space
@@ -3286,6 +3494,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
+    PowerStateHandlerClass *pshc = POWERSTATE_HANDLER_CLASS(oc);
     static const char * const valid_cpu_types[] = {
 #ifdef CONFIG_TCG
         ARM_CPU_TYPE_NAME("cortex-a7"),
@@ -3350,7 +3559,13 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
     hc->unplug_request = virt_machine_device_unplug_request_cb;
     hc->unplug = virt_machine_device_unplug_cb;
 
+    /* virt machine device powerstate handlers & callbacks */
+    assert(!mc->get_powerstate_handler);
     mc->has_online_capable_cpus = true;
+    mc->get_powerstate_handler = virt_machine_powerstate_handler;
+    pshc->poweroff_request = virt_machine_device_poweroff_request;
+    pshc->poweroff = virt_machine_device_poweroff;
+    pshc->poweron = virt_machine_device_poweron;
 
     mc->nvdimm_supported = true;
     mc->smp_props.clusters_supported = true;
@@ -3552,6 +3767,7 @@ static const TypeInfo virt_machine_info = {
     .instance_init = virt_instance_init,
     .interfaces = (const InterfaceInfo[]) {
          { TYPE_HOTPLUG_HANDLER },
+         { TYPE_POWERSTATE_HANDLER },
          { }
     },
 };
