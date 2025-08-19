@@ -353,4 +353,34 @@ static inline bool gicv3_gicc_accessible(Object *obj, int cpu)
 
     return value;
 }
+
+/**
+ * gicv3_mark_gicc_accessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU to mark as GICC-accessible
+ * @errp: Pointer to an Error* for reporting failures
+ *
+ * Marks GICv3CPUState::gicc_accessible as accessible and available for use.
+ */
+static inline void
+gicv3_mark_gicc_accessible(Object *obj, int cpu, Error **errp)
+{
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    object_property_set_bool(obj, propname, true, errp);
+}
+
+/**
+ * gicv3_mark_gicc_inaccessible:
+ * @obj: QOM object implementing the GICv3 device
+ * @cpu: Index of the vCPU to mark as GICC-inaccessible
+ * @errp: Pointer to an Error* for reporting failures
+ *
+ * Marks GICv3CPUState::gicc_accessible as inaccessible and unavailable for use.
+ */
+static inline void
+gicv3_mark_gicc_inaccessible(Object *obj, int cpu, Error **errp)
+{
+    g_autofree gchar *propname = g_strdup_printf("gicc-accessible[%d]", cpu);
+    object_property_set_bool(obj, propname, false, errp);
+}
 #endif

@@ -485,6 +485,7 @@ struct CPUState {
     bool created;
     bool stop;
     bool stopped;
+    bool parked;
 
     /* Should CPU start in powered-off state? */
     bool start_powered_off;
@@ -549,6 +550,7 @@ struct CPUState {
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
+    bool preserve_assigned_cpu_index;
     int cluster_index;
     uint32_t tcg_cflags;
     uint32_t halted;
