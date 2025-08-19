@@ -17,7 +17,4 @@ void cpu_exec_class_post_init(CPUClass *cc);
 void cpu_exec_init(CPUState *cpu);
 void cpu_exec_realize(CPUState *cpu, Error **errp);
 
-void cpu_vmstate_register(CPUState *cpu);
-void cpu_vmstate_unregister(CPUState *cpu);
-
 #endif
