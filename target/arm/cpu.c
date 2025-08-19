@@ -1502,6 +1502,7 @@ static void arm_cpu_initfn(Object *obj)
     }
 
     CPU(obj)->thread_id = 0;
+    CPU(obj)->preserve_assigned_cpu_index = true;
 }
 
 /*
