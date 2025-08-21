@@ -932,6 +932,7 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
     VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
     Aml *scope, *dsdt;
     MachineState *ms = MACHINE(vms);
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
     const MemMapEntry *memmap = vms->memmap;
     const int *irqmap = vms->irqmap;
     AcpiTable table = { .sig = "DSDT", .rev = 2, .oem_id = vms->oem_id,
@@ -947,7 +948,20 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
      * the RTC ACPI device at all when using UEFI.
      */
     scope = aml_scope("\\_SB");
-    acpi_dsdt_add_cpus(scope, vms);
+    /*
+     * If the machine supports bringing administratively disabled vCPUs
+     * deferred-online under policy, build AML to coordinate the addition and
+     * removal of CPUs gracefully with the OSPM while the VM is running. This
+     * includes events such as device-check, eject-request, ejection (_EJ0),
+     * CPU scan, _OST status reporting, etc.
+     */
+    if (vms->acpi_dev && mc->has_online_capable_cpus) {
+        acpi_build_cpus_aml(scope, memmap[VIRT_ACPI_CPUPS].base, "\\_SB",
+                            AML_GED_EVT_CPUPS_SCAN_METHOD);
+    } else {
+        acpi_dsdt_add_cpus(scope, vms);
+    }
+
     acpi_dsdt_add_uart(scope, &memmap[VIRT_UART0],
                        (irqmap[VIRT_UART0] + ARM_SPI_BASE), 0);
     if (vms->second_ns_uart_present) {
