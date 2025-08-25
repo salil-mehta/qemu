@@ -543,7 +543,7 @@ static void acpi_ged_realize(DeviceState *dev, Error **errp)
              * during notification of the power-on,off events to the OSPM
              */
             memory_region_init(&s->container_cpuospm, OBJECT(dev),
-                               "cpu ospm interface container",
+                               ACPI_CPUOSPM_REGION_NAME,
                                ACPI_CPU_OSPM_IF_REG_LEN);
             sysbus_init_mmio(sbd, &s->container_cpuospm);
             acpi_cpu_ospm_state_interface_init(&s->container_cpuospm,
