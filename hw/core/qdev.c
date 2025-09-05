@@ -369,11 +369,6 @@ void qdev_sync_disable(DeviceState *dev, Error **errp)
     /* Mark the device administratively disabled */
     qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
     smp_wmb();
-
-    /* Remove from migration stream */
-    if (qdev_get_vmsd(dev)) {
-        vmstate_unregister(VMSTATE_IF(dev), qdev_get_vmsd(dev), dev);
-    }
 }
 
 bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
@@ -815,17 +810,6 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         device_poweron(dev, errp);
         if (*errp) {
             return;
-        }
-
-        if (qdev_get_vmsd(dev)) {
-            if (vmstate_register_with_alias_id(VMSTATE_IF(dev),
-                                               VMSTATE_INSTANCE_ID_ANY,
-                                               qdev_get_vmsd(dev), dev,
-                                               dev->instance_id_alias,
-                                               dev->alias_required_for_version,
-                                               errp) < 0) {
-                return;
-            }
         }
 
         /*

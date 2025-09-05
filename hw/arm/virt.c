@@ -1920,6 +1920,9 @@ virt_cpu_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      */
     if (!dev->realized) {
         qdev_realize(dev, NULL, errp);
+    } else {
+        /* Realized but disabled vCPUs lack a VMStateDescription; re-register */
+        cpu_vmstate_register(cs);
     }
 
     gicv3_mark_gicc_accessible(OBJECT(vms->gic), cs->cpu_index, errp);
@@ -1944,7 +1947,8 @@ virt_cpu_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
      * so sending a notification is pointless.
      */
-    if (phase_check(PHASE_MACHINE_READY)) {
+    if (phase_check(PHASE_MACHINE_READY) &&
+        !runstate_check(RUN_STATE_INMIGRATE)) {
         pshc = POWERSTATE_HANDLER_GET_CLASS(vms->acpi_dev);
         pshc->poweron(POWERSTATE_HANDLER(vms->acpi_dev), dev, errp);
         if (*errp) {
@@ -1992,10 +1996,19 @@ virt_cpu_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
     }
 
     /*
-     * Ignore admin power-off before realize or when virt machine is not ready;
-     * no live state to tear down.
+     * Check that we are not tearing down too early when no live state exists.
+     * This can happen in:
+     *  1. Lazy device realization
+     *  2. Use of '-device-set' at qemu prompt
+     *  3. Post-migration on the destination VM
      */
-    if (!dev->realized || !phase_check(PHASE_MACHINE_READY)) {
+    if (!dev->realized) {
+        return;
+    }
+
+    if (!phase_check(PHASE_MACHINE_READY) ||
+        runstate_check(RUN_STATE_INMIGRATE)) {
+        cpu_vmstate_unregister(cs);
         return;
     }
 
@@ -2012,8 +2025,7 @@ virt_cpu_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
 }
 
 static void
-virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev,
-                       Error **errp)
+virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 {
     VirtMachineState *vms = VIRT_MACHINE(handler);
     PowerStateHandlerClass *pshc;
@@ -2046,10 +2058,13 @@ virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev,
                    cs->cpu_index);
         return;
     }
+
+    /* we don't want to migrate 'disabled' vCPU state(even if realized) */
+    cpu_vmstate_unregister(cs);
 }
 
-static DeviceOperPowerState virt_cpu_get_oper_state(DeviceState *dev,
-                                                    Error **errp)
+static
+DeviceOperPowerState virt_cpu_get_oper_state(DeviceState *dev, Error **errp)
 {
     ARMCPU *cpu = ARM_CPU(CPU(dev));
 
