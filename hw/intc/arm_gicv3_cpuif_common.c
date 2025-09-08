@@ -83,6 +83,14 @@ void gicv3_init_cpuif(GICv3State *s)
 
     /* define and register `system registers` with the vCPU  */
     for (i = 0; i < s->num_cpu; i++) {
-            agcc->init_cpu_reginfo(s->cpu[i].cpu);
+        GICv3CPUState *gcs = &s->cpu[i];
+
+        agcc->init_cpu_reginfo(gcs->cpu);
+
+        /* save the architectural defaults of ICC_CTLR_EL1 system register */
+        kvm_gicc_access(s, ICC_CTLR_EL1, i, &gcs->icc_ctlr_arch_def[GICV3_NS],
+                        false);
+        gcs->icc_ctlr_arch_def[GICV3_S] = gcs->icc_ctlr_arch_def[GICV3_NS];
+        gcs->icc_ctlr_arch_def_valid = true;
     }
 }

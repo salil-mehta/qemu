@@ -713,21 +713,26 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
         return;
     }
 
-    /*
-     * This shall be called even when vcpu is being hotplugged or onlined and
-     * other vcpus might be running. Host kernel KVM code to handle device
-     * access of IOCTLs KVM_{GET|SET}_DEVICE_ATTR might fail due to inability to
-     * grab vcpu locks for all the vcpus. Hence, we need to pause all vcpus to
-     * facilitate locking within host.
-     */
-    pause_all_vcpus();
-    /* Initialize to actual HW supported configuration */
-    kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS,
-                      KVM_VGIC_ATTR(ICC_CTLR_EL1, c->gicr_typer),
-                      &c->icc_ctlr_el1[GICV3_NS], false, &error_abort);
-    resume_all_vcpus();
+    /* Initialize to actual HW supported configuration (cold-reset)*/
 
-    c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+    /*
+     * Avoid racy VGIC CPU sysreg reads while vCPUs are running. KVM requires
+     * pausing all vCPUs for ICC_* sysregs accesses to prevent races with
+     * in-flight IRQ delivery (e.g. EOImode).
+     *
+     * To keep the reset path fast, cache the architectural default ICC_CTLR_EL1
+     * early (during GIC CPU interface init or vCPU realize) and reuse that
+     * shadow here.
+     */
+    if (c->icc_ctlr_arch_def_valid) {
+        c->icc_ctlr_el1[GICV3_NS] = c->icc_ctlr_arch_def[GICV3_NS];
+        c->icc_ctlr_el1[GICV3_S]  = c->icc_ctlr_arch_def[GICV3_S];
+    } else {
+        /* Worst-case fallback to KVM access */
+        kvm_gicc_access(s, ICC_CTLR_EL1, c->cpu->cpu_index,
+                        &c->icc_ctlr_el1[GICV3_NS], false);
+        c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+    }
 }
 
 static void kvm_arm_gicv3_reset_hold(Object *obj, ResetType type)
