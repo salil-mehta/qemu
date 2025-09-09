@@ -729,9 +729,16 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
         c->icc_ctlr_el1[GICV3_S]  = c->icc_ctlr_arch_def[GICV3_S];
     } else {
         /* Worst-case fallback to KVM access */
+        pause_all_vcpus();
         kvm_gicc_access(s, ICC_CTLR_EL1, c->cpu->cpu_index,
                         &c->icc_ctlr_el1[GICV3_NS], false);
+        resume_all_vcpus();
         c->icc_ctlr_el1[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+
+        /* seed the defaults on the first access */
+        c->icc_ctlr_arch_def[GICV3_NS] = c->icc_ctlr_el1[GICV3_NS];
+        c->icc_ctlr_arch_def[GICV3_S] = c->icc_ctlr_el1[GICV3_NS];
+        c->icc_ctlr_arch_def_valid = true;
     }
 }
 
@@ -814,6 +821,22 @@ static void kvm_gicv3_init_cpu_reginfo(CPUState *cs)
     define_arm_cp_regs(ARM_CPU(cs), gicv3_cpuif_reginfo);
 }
 
+#if 0
+static void gicv3_seed_icc_ctlr_defaults(GICv3State *s)
+{
+    int i;
+
+    for (i = 0; i < s->num_cpu; i++) {
+        GICv3CPUState *gcs = &s->cpu[i];
+
+        /* Save the architectural defaults of ICC_CTLR_EL1 system register */
+        kvm_gicc_access(s, ICC_CTLR_EL1, i, &gcs->icc_ctlr_arch_def[GICV3_NS],
+                        false);
+        gcs->icc_ctlr_arch_def[GICV3_S] = gcs->icc_ctlr_arch_def[GICV3_NS];
+        gcs->icc_ctlr_arch_def_valid = true;
+    }
+}
+#endif
 static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
 {
     GICv3State *s = KVM_ARM_GICV3(dev);
@@ -905,6 +928,13 @@ static void kvm_arm_gicv3_realize(DeviceState *dev, Error **errp)
     kvm_device_access(s->dev_fd, KVM_DEV_ARM_VGIC_GRP_CTRL,
                       KVM_DEV_ARM_VGIC_CTRL_INIT, NULL, true, &error_abort);
 
+#if 0
+    /*
+     * At this point the VGIC has completed CTRL_INIT, so it is safe
+     * to fetch and cache architectural defaults like ICC_CTLR_EL1.
+     */
+    gicv3_seed_icc_ctlr_defaults(s);
+#endif
     kvm_arm_register_device(&s->iomem_dist, -1, KVM_DEV_ARM_VGIC_GRP_ADDR,
                             KVM_VGIC_V3_ADDR_TYPE_DIST, s->dev_fd, 0);
 
