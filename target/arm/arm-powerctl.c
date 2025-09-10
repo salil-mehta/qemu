@@ -263,6 +263,7 @@ static void arm_set_cpu_off_async_work(CPUState *target_cpu_state,
 
     assert(bql_locked());
     target_cpu->power_state = PSCI_OFF;
+    target_cpu_state->vcpu_dirty = true;
     target_cpu_state->halted = 1;
     target_cpu_state->exception_index = EXCP_HLT;
 }
