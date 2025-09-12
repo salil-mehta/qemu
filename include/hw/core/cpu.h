@@ -550,6 +550,7 @@ struct CPUState {
 
     /* TODO Move common fields from CPUArchState here. */
     int cpu_index;
+    bool preserve_assigned_cpu_index;
     int cluster_index;
     uint32_t tcg_cflags;
     uint32_t halted;

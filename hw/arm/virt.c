@@ -1923,6 +1923,7 @@ virt_cpu_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
     } else {
         /* Realized but disabled vCPUs lack a VMStateDescription; re-register */
         cpu_vmstate_register(cs);
+        cpu_list_add(cs);
     }
 
     gicv3_mark_gicc_accessible(OBJECT(vms->gic), cs->cpu_index, errp);
@@ -2061,6 +2062,7 @@ virt_cpu_poweroff(PowerStateHandler *handler, DeviceState *dev, Error **errp)
 
     /* we don't want to migrate 'disabled' vCPU state(even if realized) */
     cpu_vmstate_unregister(cs);
+    cpu_list_remove(cs);
 }
 
 static
