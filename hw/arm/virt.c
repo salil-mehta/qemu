@@ -2010,6 +2010,7 @@ virt_cpu_poweroff_request(PowerStateHandler *handler, DeviceState *dev,
     if (!phase_check(PHASE_MACHINE_READY) ||
         runstate_check(RUN_STATE_INMIGRATE)) {
         cpu_vmstate_unregister(cs);
+        cpu_list_remove(cs);
         return;
     }
 
