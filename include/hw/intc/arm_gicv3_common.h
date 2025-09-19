@@ -172,6 +172,8 @@ struct GICv3CPUState {
      */
     uint64_t icc_ctlr_arch_def[2]; /* per-secstate (NS=0,S=1) */
     bool icc_ctlr_arch_def_valid;
+    uint64_t icc_ctlr_configured[2];
+    bool icc_ctlr_configured_valid;
     bool gicc_accessible;
 
     /* Virtualization control interface */
@@ -247,6 +249,7 @@ struct GICv3State {
     bool force_8bit_prio;
     bool irq_reset_nonsecure;
     bool gicd_no_migration_shift_bug;
+    bool guest_gicc_initialized;
 
     int dev_fd; /* kvm device fd if backed by kvm vgic support */
     Error *migration_blocker;
