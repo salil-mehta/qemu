@@ -682,6 +682,23 @@ static void kvm_arm_gicv3_get(GICv3State *s)
     }
 }
 
+static const char *machine_phase(void)
+{
+    if (phase_check(PHASE_MACHINE_READY)) {
+        return "PHASE_MACHINE_READY";
+    } else if (phase_check(PHASE_MACHINE_INITIALIZED)) {
+        return "PHASE_MACHINE_INITIALIZED";
+    } else if (phase_check(PHASE_LATE_BACKENDS_CREATED)) {
+        return "PHASE_LATE_BACKENDS_CREATED";
+    } else if (phase_check(PHASE_ACCEL_CREATED)) {
+        return "PHASE_ACCEL_CREATED";
+    } else if (phase_check(PHASE_MACHINE_CREATED)) {
+        return "PHASE_MACHINE_CREATED";
+    } else {
+        return "PHASE_NO_MACHINE";
+    }
+}
+
 /* Caller must hold the iothread (BQL). */
 static inline void
 kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
@@ -699,6 +716,8 @@ kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
         /* Fast path: return cached (no vCPU pausing required). */
         c->icc_ctlr_el1[GICV3_NS] = regval[GICV3_NS];
         c->icc_ctlr_el1[GICV3_S] = regval[GICV3_S];
+        warn_report("%s: CPU=%d, Returning Cached..\n", __func__,
+                    c->cpu->cpu_index);
         return;
     }
 
@@ -706,6 +725,8 @@ kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
     if (ret == -EBUSY || ret == -EAGAIN) {
         int tries;
 
+        warn_report("%s: CPU=%d, One-time heavy path\n", __func__,
+                    c->cpu->cpu_index);
         /* One-time heavy path: avoid contention by pausing all vCPUs. */
         pause_all_vcpus();
         /*
@@ -715,7 +736,8 @@ kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
          */
         for (tries = 0; tries < 5; tries++) {
             Error **errp = (tries == 4) ? &error_abort : NULL;
-
+            warn_report("%s: CPU=%d, Try=%d - heavy path\n", __func__,
+                        c->cpu->cpu_index, tries);
             ret = kvm_device_access(s->dev_fd, group, attr, &val, false, errp);
             if (!ret) {
                 break;
@@ -731,6 +753,8 @@ kvm_gicc_get_cached_icc_ctlr_el1(GICv3CPUState *c, uint64_t regval[2],
         resume_all_vcpus();
     }
 
+    warn_report("%s: Success: CPU=%d,publish and seed cache\n", __func__,
+                    c->cpu->cpu_index);
     /* Success: publish and seed cache. */
     c->icc_ctlr_el1[GICV3_NS] = val;
     c->icc_ctlr_el1[GICV3_S] = val;
@@ -788,10 +812,16 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     if (cpu->first_psci_on_request_seen || s->guest_gicc_initialized) {
         if (!s->guest_gicc_initialized) {
             s->guest_gicc_initialized = true;
+            warn_report("%s: CPU=%d, First PSCI-ON Seen\n", __func__,
+                        c->cpu->cpu_index);
         }
+        warn_report("%s: CPU=%d, machine-phase=%s, Configured\n", __func__,
+                    c->cpu->cpu_index, machine_phase());
         kvm_gicc_get_cached_icc_ctlr_el1(c, c->icc_ctlr_configured,
                                          &c->icc_ctlr_configured_valid);
     } else {
+        warn_report("%s: CPU=%d, machine-phase=%s, Defaults\n", __func__,
+                    c->cpu->cpu_index, machine_phase());
         /*
          * kernel has not loded yet. It safe to assume not other vCPU is in
          * KVM_RUN except vCPU 0 at this moment. Just in case, if there is
