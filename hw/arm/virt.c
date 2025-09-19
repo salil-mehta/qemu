@@ -2452,11 +2452,6 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
                                 NULL);
     }
 
-    /*
-     * start administratively disabled CPUs in a PSCI powered-down state
-     */
-    object_property_set_bool(cpuobj, "start-powered-off", true, NULL);
-
     /* set operational state of disabled CPUs as OFF */
     ARM_CPU(cpuobj)->power_state = PSCI_OFF;
 
@@ -2751,6 +2746,11 @@ static void machvirt_init(MachineState *machine)
                     error_report("MTE requested, but not supported ");
                     exit(1);
             }
+        }
+
+        /* start secondary vCPUs in a powered-down state */
+        if(n && mc->has_online_capable_cpus) {
+            object_property_set_bool(cpuobj, "start-powered-off", true, NULL);
         }
 
         if (n < smp_cpus) {
