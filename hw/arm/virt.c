@@ -2495,6 +2495,7 @@ static void machvirt_init(MachineState *machine)
     bool has_ged = !vmc->no_ged;
     unsigned int smp_cpus = machine->smp.cpus;
     unsigned int max_cpus = machine->smp.max_cpus;
+    DeviceClass *dc;
 
     /*
      * In accelerated mode, the memory map is computed earlier in kvm_type()
@@ -2555,6 +2556,13 @@ static void machvirt_init(MachineState *machine)
         max_cpus = smp_cpus + machine->smp.disabledcpus;
         machine->smp.max_cpus = max_cpus;
     }
+
+    dc = DEVICE_CLASS(object_class_by_name(machine->cpu_type));
+    if (!dc) {
+        error_printf("CPU type '%s' not registered", machine->cpu_type);
+        exit(1);
+    }
+    dc->admin_power_state_supported = mc->has_online_capable_cpus;
 
     if (max_cpus > virt_max_cpus) {
         error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
