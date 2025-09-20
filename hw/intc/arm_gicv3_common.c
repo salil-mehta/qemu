@@ -151,13 +151,12 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
     dst_enabled = qdev_check_enabled(DEVICE(cs));
 
     if (dst_enabled != src_enabled) {
-        warn_report("CPU %d admin-state mismatch: dst=%s, src=%s; fixing",
-                    cs->cpu_index,
+        error_report("GICv3: CPU %d admin-state mismatch: dst=%s, src=%s;"
+                     " Aborting!", cs->cpu_index,
                     dst_enabled ? "enabled" : "disabled",
                     src_enabled ? "enabled" : "disabled");
 
-        (src_enabled ? qdev_enable : qdev_disable)(DEVICE(cs), NULL,
-                                                   &error_fatal);
+        return -1;
     }
 
     return 0;
