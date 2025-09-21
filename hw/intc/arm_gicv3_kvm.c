@@ -746,7 +746,7 @@ static void arm_gicv3_icc_reset(CPUARMState *env, const ARMCPRegInfo *ri)
     GICv3CPUState *c;
     ARMCPU *cpu;
 
-    c = (GICv3CPUState *)env->gicv3state;
+    c = (GICv3CPUState *)env->gicv3cpustate;
     s = c->gic;
     cpu = ARM_CPU(c->cpu);
 

@@ -1065,7 +1065,7 @@ int hvf_arch_init_vcpu(CPUState *cpu)
 
     ret = hv_vcpu_get_sys_reg(cpu->accel->fd, HV_SYS_REG_ID_AA64PFR0_EL1, &pfr);
     assert_hvf_ok(ret);
-    pfr |= env->gicv3state ? (1 << 24) : 0;
+    pfr |= env->gicv3cpustate ? (1 << 24) : 0;
     ret = hv_vcpu_set_sys_reg(cpu->accel->fd, HV_SYS_REG_ID_AA64PFR0_EL1, pfr);
     assert_hvf_ok(ret);
 

@@ -501,7 +501,7 @@ static void arm_gicv3_common_realize(DeviceState *dev, Error **errp)
         s->cpu[i].gicc_accessible = qdev_check_enabled(DEVICE(cpu));
         s->cpu[i].cpu = cpu;
         s->cpu[i].gic = s;
-        /* Store GICv3CPUState in CPUARMState gicv3state pointer */
+        /* Store 'GICv3CPUState' in 'CPUARMState' */
         gicv3_set_gicv3state(cpu, &s->cpu[i]);
 
         /* Pre-construct the GICR_TYPER:

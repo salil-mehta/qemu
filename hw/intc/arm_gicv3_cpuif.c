@@ -34,7 +34,7 @@
 
 static GICv3CPUState *icc_cs_from_env(CPUARMState *env)
 {
-    return env->gicv3state;
+    return env->gicv3cpustate;
 }
 
 static bool gicv3_use_ns_bank(CPUARMState *env)

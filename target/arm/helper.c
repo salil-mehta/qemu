@@ -5208,7 +5208,7 @@ static uint64_t id_pfr1_read(CPUARMState *env, const ARMCPRegInfo *ri)
     ARMCPU *cpu = env_archcpu(env);
     uint64_t pfr1 = GET_IDREG(&cpu->isar, ID_PFR1);
 
-    if (env->gicv3state) {
+    if (env->gicv3cpustate) {
         pfr1 |= 1 << 28;
     }
     return pfr1;
@@ -5219,7 +5219,7 @@ static uint64_t id_aa64pfr0_read(CPUARMState *env, const ARMCPRegInfo *ri)
     ARMCPU *cpu = env_archcpu(env);
     uint64_t pfr0 = GET_IDREG(&cpu->isar, ID_AA64PFR0);
 
-    if (env->gicv3state) {
+    if (env->gicv3cpustate) {
         pfr0 |= 1 << 24;
     }
     return pfr0;
