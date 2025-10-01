@@ -445,7 +445,7 @@ void ich9_pm_device_plug_cb(const HotplugHandler *hotplug_dev, DeviceState *dev,
                                 dev, errp);
         }
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_plug_cb(hotplug_dev, &lpc->pm.cpuhp_state, dev, errp);
+        acpi_cpu_plug_cb(DEVICE(lpc), &lpc->pm.cpuhp_state, dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
         acpi_pcihp_device_plug_cb(hotplug_dev, &lpc->pm.acpi_pci_hotplug,
                                   dev, errp);
@@ -477,7 +477,7 @@ void ich9_pm_device_unplug_request_cb(const HotplugHandler *hotplug_dev,
             return;
         }
 
-        acpi_cpu_unplug_request_cb(hotplug_dev, &lpc->pm.cpuhp_state,
+        acpi_cpu_unplug_request_cb(DEVICE(lpc), &lpc->pm.cpuhp_state,
                                    dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
         acpi_pcihp_device_unplug_request_cb(hotplug_dev,

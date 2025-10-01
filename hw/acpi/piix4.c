@@ -338,7 +338,7 @@ static void piix4_device_plug_cb(const HotplugHandler *hotplug_dev,
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE)) {
         acpi_pcihp_device_plug_cb(hotplug_dev, &s->acpi_pci_hotplug, dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_plug_cb(hotplug_dev, &s->cpuhp_state, dev, errp);
+        acpi_cpu_plug_cb(DEVICE(s), &s->cpuhp_state, dev, errp);
     } else {
         g_assert_not_reached();
     }
@@ -357,7 +357,7 @@ static void piix4_device_unplug_request_cb(const HotplugHandler *hotplug_dev,
         acpi_pcihp_device_unplug_request_cb(hotplug_dev, &s->acpi_pci_hotplug,
                                             dev, errp);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
-        acpi_cpu_unplug_request_cb(hotplug_dev, &s->cpuhp_state, dev, errp);
+        acpi_cpu_unplug_request_cb(DEVICE(s), &s->cpuhp_state, dev, errp);
     } else {
         error_setg(errp, "acpi: device unplug request for not supported device"
                    " type: %s", object_get_typename(OBJECT(dev)));
