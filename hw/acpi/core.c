@@ -755,7 +755,7 @@ void acpi_update_sci(ACPIREGS *regs, qemu_irq irq)
                        !(pm1a_sts & ACPI_BITMASK_TIMER_STATUS));
 }
 
-void acpi_send_event(DeviceState *dev, AcpiEventStatusBits event)
+void acpi_send_event(const DeviceState *dev, AcpiEventStatusBits event)
 {
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_GET_CLASS(dev);
     if (adevc->send_event) {
