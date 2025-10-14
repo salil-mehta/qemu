@@ -167,7 +167,6 @@ struct GICv3CPUState {
     uint64_t icc_igrpen[3];
     uint64_t icc_ctlr_el3;
     bool gicc_accessible;
-
     /* For KVM, cached copy of the kernel reset value of ICC_CTLR_EL1 */
     uint64_t kvm_reset_icc_ctlr_el1;
 
