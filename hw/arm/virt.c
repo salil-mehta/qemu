@@ -2535,6 +2535,8 @@ virt_cpu_pre_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      */
     if (!dev->realized) {
         qdev_realize(dev, NULL, errp);
+        /* qemu_init_vcpu() sets CPUState::stopped=true; resume now */
+        cpu_resume(cs);
     } else {
         /* Realized but parked 'disabled' vCPUs */
         virt_unpark_cpu_in_userspace(cs);
