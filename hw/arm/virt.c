@@ -2577,6 +2577,9 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
     /* set operational state of disabled CPUs as OFF */
     ARM_CPU(cpuobj)->power_state = PSCI_OFF;
 
+    /* finalize the features like SVE, SME etc */
+    arm_cpu_finalize_features(ARM_CPU(cpuobj), &error_fatal);
+
     /*
      * [!] Constraint: The ARM CPU architecture does not permit new CPUs
      * to be added after system initialization.
