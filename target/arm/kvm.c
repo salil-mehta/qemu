@@ -2138,7 +2138,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
         return ret;
     }
 
-    if (cpu_isar_feature(aa64_sve, cpu)) {
+    if (cpu_isar_feature(aa64_sve, cpu) &&
+        !kvm_arm_feature_finalized(cpu, KVM_ARM_VCPU_SVE)) {
         ret = kvm_arm_sve_set_vls(cpu);
         if (ret) {
             return ret;
@@ -2147,6 +2148,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
         if (ret) {
             return ret;
         }
+        /* required because 'disabled' vCPUs might call arch init again */
+        kvm_arm_set_feature_finalized(cpu, KVM_ARM_VCPU_SVE);
     }
 
     if (cpu->psci_version) {
