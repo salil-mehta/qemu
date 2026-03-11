@@ -63,7 +63,7 @@ static uint64_t cpu_hotplug_rd(void *opaque, hwaddr addr, unsigned size)
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_FLAGS_OFFSET_RW: /* pack and return is_* fields */
-        val |= cdev->cpu ? 1 : 0;
+        val |= qdev_check_enabled(DEVICE(cdev->cpu)) ? 1 : 0;
         val |= cdev->is_inserting ? 2 : 0;
         val |= cdev->is_removing  ? 4 : 0;
         val |= cdev->fw_remove  ? 16 : 0;
@@ -131,20 +131,24 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             cdev->is_removing = false;
             trace_cpuhp_acpi_clear_remove_evt(cpu_st->selector);
         } else if (data & 8) {
-            DeviceState *dev = NULL;
-            HotplugHandler *hotplug_ctrl = NULL;
+            DeviceState *dev;
+            DeviceClass *dc;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_ejecting_invalid_cpu(cpu_st->selector);
                 break;
             }
-
             trace_cpuhp_acpi_ejecting_cpu(cpu_st->selector);
+
             dev = DEVICE(cdev->cpu);
-            hotplug_ctrl = qdev_get_hotplug_handler(dev);
-            hotplug_handler_unplug(hotplug_ctrl, dev, NULL);
-            object_unparent(OBJECT(dev));
-            cdev->fw_remove = false;
+            dc = DEVICE_GET_CLASS(dev);
+            /* unplug or disable the vCPU synchronously now */
+            if (dc->admin_power_state_supported) {
+                qdev_sync_disable(dev, &error_fatal);
+            } else {
+                qdev_sync_unplug(dev, NULL);
+                cdev->fw_remove = false;
+            }
         } else if (data & 16) {
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_fw_remove_invalid_cpu(cpu_st->selector);
@@ -247,9 +251,10 @@ static AcpiCpuStatus *get_cpu_status(CPUHotplugState *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_plug_cb(DeviceState *acpi_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp)
 {
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     AcpiCpuStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
@@ -258,13 +263,13 @@ void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
     }
 
     cdev->cpu = CPU(dev);
-    if (dev->hotplugged) {
+    if (dev->hotplugged || dc->admin_power_state_supported) {
         cdev->is_inserting = true;
-        acpi_send_event(DEVICE(hotplug_dev), ACPI_CPU_HOTPLUG_STATUS);
+        acpi_send_event(acpi_dev, ACPI_CPU_HOTPLUG_STATUS);
     }
 }
 
-void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_unplug_request_cb(DeviceState *acpi_dev,
                                 CPUHotplugState *cpu_st,
                                 DeviceState *dev, Error **errp)
 {
@@ -276,13 +281,19 @@ void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
     }
 
     cdev->is_removing = true;
-    acpi_send_event(DEVICE(hotplug_dev), ACPI_CPU_HOTPLUG_STATUS);
+    acpi_send_event(acpi_dev, ACPI_CPU_HOTPLUG_STATUS);
 }
 
 void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     AcpiCpuStatus *cdev;
+
+    if (dc->admin_power_state_supported) {
+        /* TODO: possible handling later */
+        return;
+    }
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
@@ -443,15 +454,22 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
 
         method = aml_method(CPU_STS_METHOD, 1, AML_SERIALIZED);
         {
+            /*
+             * Set the default _STA as 'disabled'. For always-present CPUs, all
+             * bits except 'enabled' are set as-per ACPI 1.0b (Section 6.3.5).
+             * This applies to machines supporting CPU online operations after
+             * the initial boot.
+             */
+            uint8_t default_sta = mc->has_online_capable_cpus ? 0xd : 0x4;
             Aml *idx = aml_arg(0);
-            Aml *sta = aml_local(0);
+            Aml *sta = aml_local(default_sta);
 
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
             aml_append(method, aml_store(idx, cpu_selector));
             aml_append(method, aml_store(zero, sta));
             ifctx = aml_if(aml_equal(is_enabled, one));
             {
-                aml_append(ifctx, aml_store(aml_int(0xF), sta));
+                aml_append(ifctx, aml_or(aml_int(0xF), sta, sta));
             }
             aml_append(method, ifctx);
             aml_append(method, aml_release(ctrl_lock));
