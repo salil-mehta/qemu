@@ -68,5 +68,4 @@ BusState *qdev_find_default_bus(DeviceClass *dc, Error **errp);
  * not be freed by the caller.
  */
 const char *qdev_set_id(DeviceState *dev, char *id, Error **errp);
-
 #endif

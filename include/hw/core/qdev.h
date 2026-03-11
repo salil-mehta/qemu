@@ -292,6 +292,19 @@ struct DeviceState {
      */
     DeviceAdminPowerState admin_power_state;
     /**
+     * @admin_link_name: Name of the /machine/peripheral/<name> link pointing
+     * to this device.  Set while the device is managed through the
+     * administrative enable/disable path; cleared when no longer needed.
+     */
+    char *admin_link_name;
+    /**
+     * @admin_disable_pending: Whether administrative disable has been requested
+     * and final disable completion is still pending.
+     *
+     * This is transient state.  Migration is rejected while this is true;
+     */
+    bool admin_disable_pending;
+    /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
     bool pending_deleted_event;
@@ -299,6 +312,10 @@ struct DeviceState {
      * @pending_deleted_expires_ms: optional timeout for deletion events
      */
     int64_t pending_deleted_expires_ms;
+    /**
+     * @opts: QDict of options for the device
+     */
+    QDict *opts;
     /**
      * @hotplugged: was device added after PHASE_MACHINE_READY?
      */
@@ -373,9 +390,8 @@ struct DeviceListener {
       * Returns the `DeviceState` on sucess and NULL if device was not found.
       * On errors, it returns NULL and errp is set
       */
-     DeviceState * (*find_device)(DeviceListener *listener,
-          const QDict *device_opts,
-          Error **errp);
+    DeviceState * (*find_device)(DeviceListener *listener,
+                   const QDict *device_opts,  bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -576,10 +592,19 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
  */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
+/*
+ * qdev_get_qom_access_path - Return a QOM path that can be used to access @dev
+ *
+ * If @dev is managed through an admin link, return that link path.
+ * Otherwise return the device's canonical QOM path.
+ *
+ * The returned string must be freed with g_free().
+ */
+char *qdev_get_qom_access_path(DeviceState *dev);
+
 /**
  * qdev_disable - Initiate administrative disablement and power-off of device
  * @dev:   The device to be administratively powered off
- * @bus:   The bus on which the device resides (may be NULL for CPUs)
  * @errp:  Pointer to a location where an error can be reported
  *
  * This function initiates an administrative transition of the device into a
@@ -593,7 +618,7 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
  *
  * Returns true on success; false if an error occurs, with @errp populated.
  */
-bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_disable(DeviceState *dev, Error **errp);
 
 /**
  * qdev_sync_disable - Force immediate power-off and administrative disable
@@ -614,7 +639,6 @@ void qdev_sync_disable(DeviceState *dev, Error **errp);
 /**
  * qdev_enable - Power on and administratively enable a device
  * @dev:   The device to be powered on and administratively enabled
- * @bus:   The bus on which the device is connected (may be NULL for CPUs)
  * @errp:  Pointer to a location where an error can be reported
  *
  * This function performs both administrative and operational power-on of
@@ -624,7 +648,7 @@ void qdev_sync_disable(DeviceState *dev, Error **errp);
  *
  * Returns true if the operation succeeds; false otherwise, with @errp set.
  */
-bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_enable(DeviceState *dev, Error **errp);
 
 /**
  * qdev_check_enabled - Check if a device is administratively enabled
@@ -637,6 +661,20 @@ bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp);
  * Returns true if the device is administratively enabled; false otherwise.
  */
 bool qdev_check_enabled(DeviceState *dev);
+
+/**
+ * check_admin_state_change_support - Check if a device can be administratively
+ * enabled or disabled or set to another state.
+ * @dev:  The device to check
+ *
+ * Returns true if the device is administratively enabled; false otherwise.
+ */
+static inline bool check_admin_state_change_support(DeviceState *dev)
+{
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+
+    return dc->admin_power_state_supported;
+}
 
 /**
  * qdev_get_admin_power_state - Query administrative power state of a device
@@ -688,7 +726,10 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
+DeviceState *qdev_try_enable_existing_device(const QDict *qdict, bool from_json,
+                                             const char *id, Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
+void qdev_sync_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
@@ -1263,6 +1304,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * qdev_find_device() - find the device
  *
  * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
  * @errp: pointer to error object
  *
  * Called when device state is toggled via qdev_device_state()
@@ -1270,7 +1312,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * Return: a DeviceState on success and NULL on failure
  */
 DeviceState *
-qdev_find_device(const QDict *opts, Error **errp);
+qdev_find_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

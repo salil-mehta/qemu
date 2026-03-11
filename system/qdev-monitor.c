@@ -34,6 +34,7 @@
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
+#include "qemu/id.h"
 #include "qemu/option.h"
 #include "qemu/qemu-print.h"
 #include "qemu/option_int.h"
@@ -124,6 +125,13 @@ static const QDevAlias qdev_alias_table[] = {
     { "virtio-tablet-pci", "virtio-tablet", QEMU_ARCH_VIRTIO_PCI },
     { }
 };
+
+static char *qdev_new_anon_peripheral_name(void)
+{
+    static unsigned int anon_count;
+
+    return g_strdup_printf("device[%u]", anon_count++);
+}
 
 static const char *qdev_class_get_alias(DeviceClass *dc)
 {
@@ -266,14 +274,6 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     if (!dc->user_creatable && !dc->admin_power_state_supported) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
                    "a pluggable device type");
-        return NULL;
-    }
-
-    if (phase_check(PHASE_MACHINE_READY) &&
-        (!dc->hotpluggable || !dc->admin_power_state_supported)) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
-                   "a pluggable device type or which supports changing power-"
-                   "state administratively");
         return NULL;
     }
 
@@ -619,11 +619,9 @@ const char *qdev_set_id(DeviceState *dev, char *id, Error **errp)
             return NULL;
         }
     } else {
-        static int anon_count;
-        gchar *name = g_strdup_printf("device[%d]", anon_count++);
+        g_autofree char *name = qdev_new_anon_peripheral_name();
         prop = object_property_add_child(qdev_get_peripheral_anon(), name,
                                          OBJECT(dev));
-        g_free(name);
     }
 
     return prop->name;
@@ -654,10 +652,14 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id;
+    const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
-    QDict *properties;
+
+    if (migration_is_running()) {
+        error_setg(errp, "device_add not allowed while migrating");
+        return NULL;
+    }
 
     driver = qdict_get_try_str(opts, "driver");
     if (!driver) {
@@ -700,9 +702,16 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
         return NULL;
     }
 
-    if (migration_is_running()) {
-        error_setg(errp, "device_add not allowed while migrating");
+    /*
+     * Try to resolve and enable an existing object first; if none matches,
+     * continue with normal qdev creation.
+     */
+    dev = qdev_try_enable_existing_device(opts, from_json, id, errp);
+    if (*errp) {
         return NULL;
+    }
+    if(dev) {
+        return dev;
     }
 
     /* create device */
@@ -718,20 +727,18 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
      * set dev's parent and register its id.
      * If it fails it means the id is already taken.
      */
-    id = g_strdup(qdict_get_try_str(opts, "id"));
-    if (!qdev_set_id(dev, id, errp)) {
+    if (!qdev_set_id(dev, g_strdup(id), errp)) {
         goto err_del_dev;
     }
 
     /* set properties */
-    properties = qdict_clone_shallow(opts);
-    qdict_del(properties, "driver");
-    qdict_del(properties, "bus");
-    qdict_del(properties, "id");
+    dev->opts = qdict_clone_shallow(opts);
+    qdict_del(dev->opts, "driver");
+    qdict_del(dev->opts, "bus");
+    qdict_del(dev->opts, "id");
 
-    object_set_properties_from_keyval(&dev->parent_obj, properties, from_json,
+    object_set_properties_from_keyval(&dev->parent_obj, dev->opts, from_json,
                                       errp);
-    qobject_unref(properties);
     if (*errp) {
         goto err_del_dev;
     }
@@ -911,65 +918,69 @@ static DeviceState *find_device_state(const char *id, bool use_generic_error,
     return dev;
 }
 
-void qdev_unplug(DeviceState *dev, Error **errp)
-{
-    HotplugHandler *hotplug_ctrl;
-    HotplugHandlerClass *hdc;
-    Error *local_err = NULL;
-
-    if (!qdev_hotunplug_allowed(dev, errp)) {
-        return;
-    }
-
-    if (migration_is_running() && !dev->allow_unplug_during_migration) {
-        error_setg(errp, "device_del not allowed while migrating");
-        return;
-    }
-
-    qdev_hot_removed = true;
-
-    hotplug_ctrl = qdev_get_hotplug_handler(dev);
-    /* hotpluggable device MUST have HotplugHandler, if it doesn't
-     * then something is very wrong with it */
-    g_assert(hotplug_ctrl);
-
-    /* If device supports async unplug just request it to be done,
-     * otherwise just remove it synchronously */
-    hdc = HOTPLUG_HANDLER_GET_CLASS(hotplug_ctrl);
-    if (hdc->unplug_request) {
-        hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
-    } else {
-        hotplug_handler_unplug(hotplug_ctrl, dev, &local_err);
-        if (!local_err) {
-            object_unparent(OBJECT(dev));
-        }
-    }
-    error_propagate(errp, local_err);
-}
-
 void qmp_device_del(const char *id, Error **errp)
 {
-    DeviceState *dev = find_device_state(id, false, errp);
-    if (dev != NULL) {
-        if (dev->pending_deleted_event &&
-            (dev->pending_deleted_expires_ms == 0 ||
-             dev->pending_deleted_expires_ms > qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL))) {
-            error_setg(errp, "Device %s is already in the "
-                             "process of unplug", id);
-            return;
+    ERRP_GUARD();
+    DeviceState *dev;
+    Error *unplug_err = NULL;
+
+    dev = find_device_state(id, false, errp);
+    if (!dev) {
+        return;
+    }
+
+    if (dev->pending_deleted_event &&
+        (dev->pending_deleted_expires_ms == 0 ||
+         dev->pending_deleted_expires_ms >
+         qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL))) {
+        error_setg(errp, "Device %s is already in the process of unplug", id);
+        return;
+    }
+
+    if (dev->admin_disable_pending) {
+        error_setg(errp, "Device %s administrative disable is already pending",
+                   id);
+        return;
+    }
+
+    /*
+     * If administrative disable is supported, use it only when normal
+     * hot-unplug is not allowed.  Use a local error because hot-unplug
+     * rejection is intentionally consumed when falling back to disable.
+     */
+    if (check_admin_state_change_support(dev) &&
+        !qdev_hotunplug_allowed(dev, &unplug_err)) {
+        error_free(unplug_err);
+        unplug_err = NULL;
+
+        dev->admin_disable_pending = true;
+
+        qdev_disable(dev, errp);
+        if (*errp) {
+            dev->admin_disable_pending = false;
         }
 
-        qdev_unplug(dev, errp);
+        return;
     }
+
+    /*
+     * Either administrative disable is not supported, or hot-unplug is
+     * allowed.  Let qdev_unplug() run its normal checks.
+     */
+    qdev_unplug(dev, errp);
 }
 
 void qmp_device_set(const QDict *qdict, Error **errp)
 {
-    const char *state;
+    const char *id = qdict_get_try_str(qdict, "id");
     const char *driver;
-    DeviceState *dev;
     DeviceClass *dc;
-    const char *id;
+
+    /* check driver exists and we are at the right phase of machine init */
+    if (migration_is_running()) {
+        error_setg(errp, "device_set not allowed while migrating");
+        return;
+    }
 
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
@@ -977,60 +988,13 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         return;
     }
 
-    /* check driver exists and we are at the right phase of machine init */
     dc = qdev_get_device_class(&driver, errp);
     if (!dc) {
-        error_setg(errp, "driver '%s' not supported", driver);
+        error_append_hint(errp, "driver '%s' not supported!", driver);
         return;
     }
 
-    if (migration_is_running()) {
-        error_setg(errp, "device_set not allowed while migrating");
-        return;
-    }
-
-    id = qdict_get_try_str(qdict, "id");
-
-    if (id) {
-        /* Lookup by ID */
-        dev = find_device_state(id, false, errp);
-        if (errp && *errp) {
-            error_prepend(errp, "Device lookup failed for ID '%s': ", id);
-            return;
-        }
-    } else {
-        /* Lookup using driver and properties */
-        dev = qdev_find_device(qdict, errp);
-        if (errp && *errp) {
-            error_prepend(errp, "Device lookup for %s failed: ", driver);
-            return;
-        }
-    }
-    if (!dev) {
-        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
-                  "No device found for driver '%s'", driver);
-        return;
-    }
-
-    state = qdict_get_try_str(qdict, "admin-state");
-    if (!state) {
-        error_setg(errp, "no device state change specified for device %s ",
-                   dev->id);
-        return;
-    } else if (!strcmp(state, "enable")) {
-
-        if (!qdev_enable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
-            return;
-        }
-    } else if (!strcmp(state, "disable")) {
-        if (!qdev_disable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
-            return;
-        }
-    } else {
-        error_setg(errp, "unrecognized specified state *%s* for device %s",
-                   state, dev->id);
-        return;
-    }
+    qdev_try_enable_existing_device(qdict, false, g_strdup(id), errp);
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
