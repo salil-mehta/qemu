@@ -331,6 +331,16 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
+void qdev_sync_unplug(DeviceState *dev, Error **errp)
+{
+    HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
+
+    hotplug_handler_unplug(hotplug_ctrl, dev, errp);
+    if (!errp || !*errp) {
+        object_unparent(OBJECT(dev));
+    }
+}
+
 bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
 {
     g_assert(dev);
@@ -408,6 +418,21 @@ int qdev_get_admin_power_state(DeviceState *dev)
 
 bool qdev_check_enabled(DeviceState *dev)
 {
+    DeviceClass *dc;
+
+    if (!dev) {
+        return false;
+    }
+
+    dc = DEVICE_GET_CLASS(dev);
+    if (!dc->admin_power_state_supported) {
+        /*
+         * fallback to existing cpu hotplug behaviour i.e. any present cpus
+         * are also enabled
+         */
+        return true;
+    }
+
    /*
     * if device supports power state transitions, check if it is not in
     * 'disabled' state.

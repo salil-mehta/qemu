@@ -39,10 +39,10 @@ typedef struct CPUHotplugState {
     AcpiCpuStatus *devs;
 } CPUHotplugState;
 
-void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_plug_cb(DeviceState *acpi_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp);
 
-void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_unplug_request_cb(DeviceState *acpi_dev,
                                 CPUHotplugState *cpu_st,
                                 DeviceState *dev, Error **errp);
 
