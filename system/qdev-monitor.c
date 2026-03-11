@@ -939,10 +939,7 @@ void qdev_unplug(DeviceState *dev, Error **errp)
     if (hdc->unplug_request) {
         hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
     } else {
-        hotplug_handler_unplug(hotplug_ctrl, dev, &local_err);
-        if (!local_err) {
-            object_unparent(OBJECT(dev));
-        }
+        qdev_sync_unplug(dev, &local_err);
     }
     error_propagate(errp, local_err);
 }

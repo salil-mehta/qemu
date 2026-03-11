@@ -1188,8 +1188,9 @@ build_dsdt(GArray *table_data, BIOSLinker *linker, VirtMachineState *vms)
      * CPU scan, _OST status reporting, etc.
      */
     if (vms->acpi_dev && mc->has_online_capable_cpus) {
-        acpi_build_cpus_aml(scope, memmap[VIRT_ACPI_CPUPS].base, "\\_SB",
-                            AML_GED_EVT_CPUPS_SCAN_METHOD);
+        CPUHotplugFeatures opts = {0};
+        build_cpus_aml(scope, ms, opts, NULL, memmap[VIRT_ACPI_CPUHP].base,
+                       "\\_SB", AML_GED_EVT_CPU_SCAN_METHOD, AML_SYSTEM_MEMORY);
     } else {
         acpi_dsdt_add_cpus(scope, vms);
     }
