@@ -435,7 +435,7 @@ static bool cpuhp_needed(void *opaque)
 {
     MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
-    return mc->has_hotpluggable_cpus;
+    return mc->has_hotpluggable_cpus || mc->has_online_capable_cpus;
 }
 
 static const VMStateDescription vmstate_cpuhp_state = {
@@ -445,24 +445,6 @@ static const VMStateDescription vmstate_cpuhp_state = {
     .needed = cpuhp_needed,
     .fields      = (VMStateField[]) {
         VMSTATE_CPU_HOTPLUG(cpuhp_state, AcpiGedState),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
-static bool cpuospm_needed(void *opaque)
-{
-    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
-
-    return mc->has_online_capable_cpus;
-}
-
-static const VMStateDescription vmstate_cpuospm_state = {
-    .name = "acpi-ged/cpu-ospm",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = cpuospm_needed,
-    .fields      = (VMStateField[]) {
-        VMSTATE_CPU_OSPM_STATE(cpuospm_state, AcpiGedState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -563,7 +545,6 @@ static const VMStateDescription vmstate_acpi_ged = {
     .subsections = (const VMStateDescription * const []) {
         &vmstate_memhp_state,
         &vmstate_cpuhp_state,
-        &vmstate_cpuospm_state,
         &vmstate_ghes_state,
         &vmstate_pcihp_state,
         &vmstate_hest_state,
