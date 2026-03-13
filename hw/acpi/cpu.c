@@ -131,8 +131,8 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             cdev->is_removing = false;
             trace_cpuhp_acpi_clear_remove_evt(cpu_st->selector);
         } else if (data & 8) {
+            MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
             DeviceState *dev;
-            DeviceClass *dc;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_ejecting_invalid_cpu(cpu_st->selector);
@@ -141,9 +141,8 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             trace_cpuhp_acpi_ejecting_cpu(cpu_st->selector);
 
             dev = DEVICE(cdev->cpu);
-            dc = DEVICE_GET_CLASS(dev);
             /* unplug or disable the vCPU synchronously now */
-            if (dc->admin_power_state_supported) {
+            if (mc->has_online_capable_cpus) {
                 qdev_sync_disable(dev, &error_fatal);
             } else {
                 qdev_sync_unplug(dev, NULL);
@@ -254,7 +253,7 @@ static AcpiCpuStatus *get_cpu_status(CPUHotplugState *cpu_st, DeviceState *dev)
 void acpi_cpu_plug_cb(DeviceState *acpi_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp)
 {
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     AcpiCpuStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
@@ -263,7 +262,7 @@ void acpi_cpu_plug_cb(DeviceState *acpi_dev,
     }
 
     cdev->cpu = CPU(dev);
-    if (dev->hotplugged || dc->admin_power_state_supported) {
+    if (dev->hotplugged || mc->has_online_capable_cpus) {
         cdev->is_inserting = true;
         acpi_send_event(acpi_dev, ACPI_CPU_HOTPLUG_STATUS);
     }
@@ -287,11 +286,11 @@ void acpi_cpu_unplug_request_cb(DeviceState *acpi_dev,
 void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     AcpiCpuStatus *cdev;
 
-    if (dc->admin_power_state_supported) {
-        /* TODO: possible handling later */
+    if (mc->has_online_capable_cpus) {
+        /* future possible handling */
         return;
     }
 
@@ -460,16 +459,16 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
              * This applies to machines supporting CPU online operations after
              * the initial boot.
              */
-            uint8_t default_sta = mc->has_online_capable_cpus ? 0xd : 0x4;
+            Aml *defsta = aml_int(mc->has_online_capable_cpus ? 0xd : 0);
+            Aml *sta = aml_local(0);
             Aml *idx = aml_arg(0);
-            Aml *sta = aml_local(default_sta);
 
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
             aml_append(method, aml_store(idx, cpu_selector));
-            aml_append(method, aml_store(zero, sta));
+            aml_append(method, aml_store(defsta, sta));
             ifctx = aml_if(aml_equal(is_enabled, one));
             {
-                aml_append(ifctx, aml_or(aml_int(0xF), sta, sta));
+                 aml_append(ifctx, aml_store(aml_int(0xF), sta));
             }
             aml_append(method, ifctx);
             aml_append(method, aml_release(ctrl_lock));
@@ -704,10 +703,12 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
             aml_append(dev, method);
 
             /* build _MAT object */
-            build_madt_cpu(i, arch_ids, madt_buf, true); /* set enabled flag */
-            aml_append(dev, aml_name_decl("_MAT",
-                aml_buffer(madt_buf->len, (uint8_t *)madt_buf->data)));
-            g_array_free(madt_buf, true);
+	    if (build_madt_cpu) {
+                build_madt_cpu(i, arch_ids, madt_buf, true); /* set enabled flag */
+                aml_append(dev, aml_name_decl("_MAT",
+                    aml_buffer(madt_buf->len, (uint8_t *)madt_buf->data)));
+                g_array_free(madt_buf, true);
+	    }
 
             if (CPU(arch_ids->cpus[i].cpu) != first_cpu) {
                 method = aml_method("_EJ0", 1, AML_NOTSERIALIZED);
@@ -740,6 +741,5 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
     method = aml_method(event_handler_method, 0, AML_NOTSERIALIZED);
     aml_append(method, aml_call0("\\_SB.CPUS." CPU_SCAN_METHOD));
     aml_append(table, method);
-
     g_free(cphp_res_path);
 }
