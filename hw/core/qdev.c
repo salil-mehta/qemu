@@ -40,6 +40,7 @@
 #include "hw/core/qdev-clock.h"
 #include "migration/vmstate.h"
 #include "trace.h"
+#include "hw/core/hotplug.h"
 
 static bool qdev_hot_added = false;
 bool qdev_hot_removed = false;
@@ -331,6 +332,7 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
+#if 0
 void qdev_sync_unplug(DeviceState *dev, Error **errp)
 {
     HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
@@ -340,6 +342,7 @@ void qdev_sync_unplug(DeviceState *dev, Error **errp)
         object_unparent(OBJECT(dev));
     }
 }
+#endif
 
 bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
 {
@@ -413,30 +416,15 @@ int qdev_get_admin_power_state(DeviceState *dev)
                                         "DeviceAdminPowerState", NULL);
     }
 
+    /*
+     * fallback to existing cpu hotplug behaviour i.e. any present cpus
+     * are also enabled
+     */
     return DEVICE_ADMIN_POWER_STATE_ENABLED;
 }
 
 bool qdev_check_enabled(DeviceState *dev)
 {
-    DeviceClass *dc;
-
-    if (!dev) {
-        return false;
-    }
-
-    dc = DEVICE_GET_CLASS(dev);
-    if (!dc->admin_power_state_supported) {
-        /*
-         * fallback to existing cpu hotplug behaviour i.e. any present cpus
-         * are also enabled
-         */
-        return true;
-    }
-
-   /*
-    * if device supports power state transitions, check if it is not in
-    * 'disabled' state.
-    */
     return qdev_get_admin_power_state(dev) == DEVICE_ADMIN_POWER_STATE_ENABLED;
 }
 

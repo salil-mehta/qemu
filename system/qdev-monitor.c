@@ -911,6 +911,16 @@ static DeviceState *find_device_state(const char *id, bool use_generic_error,
     return dev;
 }
 
+void qdev_sync_unplug(DeviceState *dev, Error **errp)
+{
+    HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
+
+    hotplug_handler_unplug(hotplug_ctrl, dev, errp);
+    if (!errp || !*errp) {
+        object_unparent(OBJECT(dev));
+    }
+}
+
 void qdev_unplug(DeviceState *dev, Error **errp)
 {
     HotplugHandler *hotplug_ctrl;
