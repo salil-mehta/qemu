@@ -987,7 +987,7 @@ void qmp_device_set(const QDict *qdict, Error **errp)
     /* check driver exists and we are at the right phase of machine init */
     dc = qdev_get_device_class(&driver, errp);
     if (!dc) {
-        error_setg(errp, "driver '%s' not supported", driver);
+        error_append_hint(errp, "driver '%s' not supported!", driver);
         return;
     }
 
@@ -1002,14 +1002,14 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         /* Lookup by ID */
         dev = find_device_state(id, false, errp);
         if (errp && *errp) {
-            error_prepend(errp, "Device lookup failed for ID '%s': ", id);
+            error_append_hint(errp, "Device lookup failed for ID '%s': ", id);
             return;
         }
     } else {
         /* Lookup using driver and properties */
         dev = qdev_find_device(qdict, errp);
         if (errp && *errp) {
-            error_prepend(errp, "Device lookup for %s failed: ", driver);
+            error_append_hint(errp, "Device lookup for %s failed: ", driver);
             return;
         }
     }
