@@ -589,6 +589,26 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
+void qdev_set_alias(DeviceState *dev, char *alias_id, char *target_name)
+{
+    Object *parent_container;
+    gchar *final_name;
+
+    if (alias_id) {
+        parent_container = qdev_get_peripheral();
+        final_name = g_strdup(alias_id);
+    } else {
+        static int anon_count;
+        parent_container = qdev_get_peripheral_anon();
+        final_name = g_strdup_printf("alias-device[%d]", anon_count++);
+    }
+
+    object_property_add_alias(parent_container, final_name, OBJECT(dev),
+                              target_name ? target_name : "");
+
+    g_free(final_name);
+}
+
 /* Takes ownership of @id, will be freed when deleting the device */
 const char *qdev_set_id(DeviceState *dev, char *id, Error **errp)
 {
@@ -640,16 +660,55 @@ BusState *qdev_find_default_bus(DeviceClass *dc, Error **errp)
     return bus;
 }
 
+static DeviceState *
+qmp_device_find_and_set(const QDict *qdict, const char *id, Error **errp)
+{
+    ERRP_GUARD();
+    const char *driver = qdict_get_try_str(qdict, "driver");
+    DeviceState *dev;
+
+    /* Lookup using driver and properties */
+    dev = qdev_find_device(qdict, errp);
+    if (*errp) {
+        return NULL;
+    }
+
+    if (!dev) {
+        error_setg(errp, "No device found for driver '%s'", driver);
+        return NULL;
+    }
+
+    if (object_has_alias(OBJECT(dev))) {
+    error_setg(errp,
+               "Device (driver '%s') is already managed under a different ID",
+               driver);
+        return NULL;
+    }
+    /* create alias so that device can be managed by user now */
+    qdev_set_alias(dev, id, NULL);
+
+    if (!qdev_enable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
+        return NULL;
+    }
+
+    return dev;
+}
+
 DeviceState *qdev_device_add_from_qdict(const QDict *opts,
                                         bool from_json, Error **errp)
 {
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id;
+    char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
+
+    if (migration_is_running()) {
+        error_setg(errp, "device_add not allowed while migrating");
+        return NULL;
+    }
 
     driver = qdict_get_try_str(opts, "driver");
     if (!driver) {
@@ -692,9 +751,10 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
         return NULL;
     }
 
-    if (migration_is_running()) {
-        error_setg(errp, "device_add not allowed while migrating");
-        return NULL;
+    /* devices can be power-managed(on/off) or hot-{add,remov}'ed */
+    if (dc->admin_power_state_supported) {
+        dev = qmp_device_find_and_set(opts, id, errp);
+        return dev;
     }
 
     /* create device */
@@ -710,8 +770,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
      * set dev's parent and register its id.
      * If it fails it means the id is already taken.
      */
-    id = g_strdup(qdict_get_try_str(opts, "id"));
-    if (!qdev_set_id(dev, id, errp)) {
+    if (!qdev_set_id(dev, g_strdup(id), errp)) {
         goto err_del_dev;
     }
 
@@ -970,66 +1029,25 @@ void qmp_device_set(const QDict *qdict, Error **errp)
     DeviceClass *dc;
     const char *id;
 
+    /* check driver exists and we are at the right phase of machine init */
+    if (migration_is_running()) {
+        error_setg(errp, "device_set not allowed while migrating");
+        return;
+    }
+
     driver = qdict_get_try_str(qdict, "driver");
     if (!driver) {
         error_setg(errp, "Parameter 'driver' is missing");
         return;
     }
 
-    /* check driver exists and we are at the right phase of machine init */
     dc = qdev_get_device_class(&driver, errp);
     if (!dc) {
         error_append_hint(errp, "driver '%s' not supported!", driver);
         return;
     }
 
-    if (migration_is_running()) {
-        error_setg(errp, "device_set not allowed while migrating");
-        return;
-    }
-
-    id = qdict_get_try_str(qdict, "id");
-
-    if (id) {
-        /* Lookup by ID */
-        dev = find_device_state(id, false, errp);
-        if (errp && *errp) {
-            error_append_hint(errp, "Device lookup failed for ID '%s': ", id);
-            return;
-        }
-    } else {
-        /* Lookup using driver and properties */
-        dev = qdev_find_device(qdict, errp);
-        if (errp && *errp) {
-            error_append_hint(errp, "Device lookup for %s failed: ", driver);
-            return;
-        }
-    }
-    if (!dev) {
-        error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
-                  "No device found for driver '%s'", driver);
-        return;
-    }
-
-    state = qdict_get_try_str(qdict, "admin-state");
-    if (!state) {
-        error_setg(errp, "no device state change specified for device %s ",
-                   dev->id);
-        return;
-    } else if (!strcmp(state, "enable")) {
-
-        if (!qdev_enable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
-            return;
-        }
-    } else if (!strcmp(state, "disable")) {
-        if (!qdev_disable(dev, qdev_get_parent_bus(DEVICE(dev)), errp)) {
-            return;
-        }
-    } else {
-        error_setg(errp, "unrecognized specified state *%s* for device %s",
-                   state, dev->id);
-        return;
-    }
+    qmp_device_find_and_set(qdict, errp)
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
