@@ -269,14 +269,6 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
         return NULL;
     }
 
-    if (phase_check(PHASE_MACHINE_READY) &&
-        (!dc->hotpluggable || !dc->admin_power_state_supported)) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
-                   "a pluggable device type or which supports changing power-"
-                   "state administratively");
-        return NULL;
-    }
-
     if (object_class_dynamic_cast(oc, TYPE_SYS_BUS_DEVICE)) {
         /* sysbus devices need to be allowed by the machine */
         MachineClass *mc = MACHINE_CLASS(object_get_class(qdev_get_machine()));
