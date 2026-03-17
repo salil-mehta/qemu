@@ -1942,6 +1942,8 @@ static DeviceState *virt_find_cpu(const QDict *opts, Error **errp)
         return NULL;
     }
 
+    object_ref(OBJECT(cpu));
+
     return DEVICE(cpu);
 }
 
@@ -2005,6 +2007,20 @@ virt_cpu_pre_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      * it is powered on. Saves boot time; later power-ons skips this.
      */
     if (!dev->realized) {
+        const char *id = qdict_get_try_str(dev->opts, "id");
+//#if 0
+        /* set cpu's parent and register its id. */
+        if (!qdev_set_id(dev, g_strdup_printf("@cpu#%d", cs->cpu_index), errp)) {
+        //if (!qdev_set_id(dev, NULL, errp)) {
+            return;
+        }
+
+        if (qdev_has_alias(OBJECT(dev))) {
+             error_setg(errp, "Couldn't set alias for device %s", dev->id);
+	}
+        /* create alias so that device can be managed by user now */
+        qdev_set_alias(dev, g_strdup(id));
+//#endif
         qdev_realize(dev, NULL, errp);
         /* qemu_init_vcpu() sets CPUState::stopped=true; resume now */
         cpu_resume(cs);
@@ -2139,6 +2155,9 @@ virt_cpu_post_poweroff(PowerStateHandler *handler, DeviceState *dev,
      * reducing KVM vCPU lock contention.
      */
     virt_park_cpu_in_userspace(cs);
+
+    ///* remove the alias to make CPU object inaccessible to user */
+    //object_unparent(OBJECT(cs));
 }
 
 static
@@ -2567,7 +2586,7 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
      */
 
     /* set this vCPU to be administratively 'disabled' in QOM */
-    qdev_disable(DEVICE(cpuobj), NULL, &error_fatal);
+    qdev_disable(DEVICE(cpuobj), &error_fatal);
 
     if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
         object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,

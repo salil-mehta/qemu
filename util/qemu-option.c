@@ -610,6 +610,7 @@ QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
 {
     QemuOpts *opts = NULL;
 
+    warn_report("%s: check wellformed\n", __func__);
     if (list->merge_lists) {
         if (id) {
             error_setg(errp, "Invalid parameter 'id'");
@@ -620,6 +621,7 @@ QemuOpts *qemu_opts_create(QemuOptsList *list, const char *id,
             return opts;
         }
     } else if (id) {
+    warn_report("%s: check wellformed, %s\n", __func__, id);
         assert(fail_if_exists);
         if (!id_wellformed(id)) {
             error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "id",
