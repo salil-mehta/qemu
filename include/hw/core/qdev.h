@@ -300,6 +300,10 @@ struct DeviceState {
      */
     int64_t pending_deleted_expires_ms;
     /**
+     * @opts: QDict of options for the device
+     */
+    QDict *opts;
+    /**
      * @hotplugged: was device added after PHASE_MACHINE_READY?
      */
     int hotplugged;
@@ -577,9 +581,23 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_has_alias:
+ * @target: the object to check for existing aliases
+ *
+ * Search both the standard peripheral and anonymous peripheral containers
+ * to determine if any QOM alias property currently points to @target
+ *
+ * This is particularly useful for management logic that needs to ensure
+ * a physical device (like a boot-time CPU) is not assigned multiple
+ * user-facing IDs or aliases simultaneously.
+ *
+ * Returns: %true if an alias pointing to @target exists, %false otherwise
+ */
+bool qdev_has_alias(Object *target);
+
+/**
  * qdev_disable - Initiate administrative disablement and power-off of device
  * @dev:   The device to be administratively powered off
- * @bus:   The bus on which the device resides (may be NULL for CPUs)
  * @errp:  Pointer to a location where an error can be reported
  *
  * This function initiates an administrative transition of the device into a
@@ -593,7 +611,7 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
  *
  * Returns true on success; false if an error occurs, with @errp populated.
  */
-bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_disable(DeviceState *dev, Error **errp);
 
 /**
  * qdev_sync_disable - Force immediate power-off and administrative disable
@@ -614,7 +632,6 @@ void qdev_sync_disable(DeviceState *dev, Error **errp);
 /**
  * qdev_enable - Power on and administratively enable a device
  * @dev:   The device to be powered on and administratively enabled
- * @bus:   The bus on which the device is connected (may be NULL for CPUs)
  * @errp:  Pointer to a location where an error can be reported
  *
  * This function performs both administrative and operational power-on of
@@ -624,7 +641,7 @@ void qdev_sync_disable(DeviceState *dev, Error **errp);
  *
  * Returns true if the operation succeeds; false otherwise, with @errp set.
  */
-bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp);
+bool qdev_enable(DeviceState *dev, Error **errp);
 
 /**
  * qdev_check_enabled - Check if a device is administratively enabled
