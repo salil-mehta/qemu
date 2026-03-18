@@ -344,18 +344,9 @@ void qdev_sync_unplug(DeviceState *dev, Error **errp)
 }
 #endif
 
-bool qdev_disable(DeviceState *dev, BusState *bus, Error **errp)
+bool qdev_disable(DeviceState *dev, Error **errp)
 {
     g_assert(dev);
-
-    if (bus) {
-        error_setg(errp, "Device %s 'disable' operation not supported",
-                   object_get_typename(OBJECT(dev)));
-        return false;
-    }
-
-    /* devices like cpu don't have bus */
-    g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
 
     return object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
                                    errp);
@@ -385,18 +376,9 @@ void qdev_sync_disable(DeviceState *dev, Error **errp)
     smp_wmb();
 }
 
-bool qdev_enable(DeviceState *dev, BusState *bus, Error **errp)
+bool qdev_enable(DeviceState *dev, Error **errp)
 {
     g_assert(dev);
-
-    if (bus) {
-        error_setg(errp, "Device %s does not supports 'enable' operation",
-                   object_get_typename(OBJECT(dev)));
-        return false;
-    }
-
-    /* devices like cpu don't have bus */
-    g_assert(!DEVICE_GET_CLASS(dev)->bus_type);
 
     return object_property_set_str(OBJECT(dev), "admin_power_state", "enabled",
                                     errp);

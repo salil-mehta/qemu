@@ -2881,6 +2881,8 @@ static void machvirt_init(MachineState *machine)
         } else {
             /* 'Present' & 'Disabled' vCPUs */
             virt_setup_lazy_vcpu_realization(cpuobj, vms);
+            qdev_set_id(DEVICE(cpuobj), g_strdup_printf("%cpu-%d", n),
+                        &error_fatal);
         }
 
         /*
