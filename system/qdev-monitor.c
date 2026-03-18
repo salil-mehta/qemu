@@ -785,7 +785,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
 
     /* devices can be power-managed(on/off) or hot-{add,remov}'ed */
     if (dc->admin_power_state_supported) {
-        dev = qmp_device_find_and_enable(opts, id, errp);
+        dev = qmp_device_find_and_enable(opts, g_strdup(id), errp);
         return dev;
     }
 
