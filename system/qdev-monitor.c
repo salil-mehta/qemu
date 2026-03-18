@@ -1061,7 +1061,7 @@ void qmp_device_del(const char *id, Error **errp)
 
 void qmp_device_set(const QDict *qdict, Error **errp)
 {
-    char *id = qdict_get_try_str(qdict, "id");
+    const char *id = qdict_get_try_str(qdict, "id");
     const char *driver;
     DeviceClass *dc;
 
@@ -1083,7 +1083,7 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         return;
     }
 
-    qmp_device_find_and_enable(qdict, id, errp);
+    qmp_device_find_and_enable(qdict, g_strdup(id), errp);
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
