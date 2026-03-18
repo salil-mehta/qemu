@@ -591,6 +591,8 @@ static BusState *qbus_find(const char *path, Error **errp)
 
 bool qdev_has_alias(Object *target)
 {
+    const char *canon = object_get_canonical_path_component(target);
+    Object *parent = target->parent;
     Object *containers[] = {
         qdev_get_peripheral(),
         qdev_get_peripheral_anon(),
@@ -603,16 +605,18 @@ bool qdev_has_alias(Object *target)
 
         object_property_iter_init(&iter, containers[i]);
         while ((prop = object_property_iter_next(&iter))) {
-            if (g_str_has_prefix(prop->type, "alias")) {
-                Object *resolved;
-                resolved = object_resolve_path_component(containers[i],
-                                                         prop->name);
-                if (resolved == target) {
-                    return true;
-                }
+            if (containers[i] == parent && canon &&
+                strcmp(prop->name, canon) == 0) {
+                continue;
+            }
+
+            if (object_resolve_path_component(containers[i], prop->name) ==
+                target) {
+                return true;
             }
         }
     }
+
     return false;
 }
 
@@ -710,14 +714,10 @@ qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
         return NULL;
     }
 
-    if (qdev_has_alias(OBJECT(dev))) {
-        error_setg(errp,
-                   "Device(driver %s) is already managed under a different ID",
-                   driver);
+    /* assign ID so that device can now be managed by the user */
+    if (!qdev_set_id(dev, id, errp)) {
         return NULL;
     }
-    /* create alias so that device can be managed by user now */
-    qdev_set_alias(dev, id);
 
     if (!qdev_enable(dev, errp)) {
         return NULL;
