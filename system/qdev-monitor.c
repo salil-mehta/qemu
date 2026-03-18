@@ -616,10 +616,13 @@ bool qdev_has_alias(Object *target)
     return false;
 }
 
-void qdev_set_alias(DeviceState *dev, const char *alias_id, char *target_name)
+void qdev_set_alias(DeviceState *dev, const char *alias_id)
 {
+    Object *dev_obj = OBJECT(dev);
+    g_autofree gchar *target_name;
     Object *parent_container;
     gchar *final_name;
+    Object *dev_parent;
 
     if (alias_id) {
         parent_container = qdev_get_peripheral();
@@ -630,8 +633,11 @@ void qdev_set_alias(DeviceState *dev, const char *alias_id, char *target_name)
         final_name = g_strdup_printf("alias-device[%d]", anon_count++);
     }
 
-    object_property_add_alias(parent_container, final_name, OBJECT(dev),
-                              target_name ? target_name : "");
+    dev_parent = object_get_parent(dev_obj);
+    target_name = object_get_canonical_path_component(dev_obj);
+
+    object_property_add_alias(parent_container, final_name, dev_parent,
+                              target_name);
 
     g_free(final_name);
 }
@@ -712,7 +718,7 @@ qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
         return NULL;
     }
     /* create alias so that device can be managed by user now */
-    qdev_set_alias(dev, id, qdev_get_human_name(dev));
+    qdev_set_alias(dev, id);
 
     if (!qdev_enable(dev, errp)) {
         return NULL;
