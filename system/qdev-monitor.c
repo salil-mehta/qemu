@@ -619,10 +619,10 @@ bool qdev_has_alias(Object *target)
 void qdev_set_alias(DeviceState *dev, const char *alias_id)
 {
     Object *dev_obj = OBJECT(dev);
-    g_autofree gchar *target_name;
     Object *parent_container;
     gchar *final_name;
     Object *dev_parent;
+    g_autofree gchar *target_name;
 
     if (alias_id) {
         parent_container = qdev_get_peripheral();
@@ -633,7 +633,7 @@ void qdev_set_alias(DeviceState *dev, const char *alias_id)
         final_name = g_strdup_printf("alias-device[%d]", anon_count++);
     }
 
-    dev_parent = object_get_parent(dev_obj);
+    dev_parent = dev_obj->parent;
     target_name = object_get_canonical_path_component(dev_obj);
 
     object_property_add_alias(parent_container, final_name, dev_parent,
