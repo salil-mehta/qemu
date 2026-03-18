@@ -616,8 +616,7 @@ bool qdev_has_alias(Object *target)
     return false;
 }
 
-static void
-qdev_set_alias(DeviceState *dev, const char *alias_id, char *target_name)
+void qdev_set_alias(DeviceState *dev, const char *alias_id, char *target_name)
 {
     Object *parent_container;
     gchar *final_name;
