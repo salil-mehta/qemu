@@ -712,7 +712,7 @@ qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
         return NULL;
     }
     /* create alias so that device can be managed by user now */
-    qdev_set_alias(dev, id, NULL);
+    qdev_set_alias(dev, id, qdev_get_human_name(dev));
 
     if (!qdev_enable(dev, errp)) {
         return NULL;
