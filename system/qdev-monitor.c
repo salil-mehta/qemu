@@ -697,7 +697,7 @@ BusState *qdev_find_default_bus(DeviceClass *dc, Error **errp)
 }
 
 static DeviceState *
-qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
+qmp_device_find_and_enable(const QDict *qdict, char *id, Error **errp)
 {
     ERRP_GUARD();
     const char *driver = qdict_get_try_str(qdict, "driver");
@@ -732,7 +732,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    const char *id = qdict_get_try_str(opts, "id");
+    char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
@@ -1061,7 +1061,7 @@ void qmp_device_del(const char *id, Error **errp)
 
 void qmp_device_set(const QDict *qdict, Error **errp)
 {
-    const char *id = qdict_get_try_str(qdict, "id");
+    char *id = qdict_get_try_str(qdict, "id");
     const char *driver;
     DeviceClass *dc;
 
