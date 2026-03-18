@@ -2567,7 +2567,7 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
      */
 
     /* set this vCPU to be administratively 'disabled' in QOM */
-    qdev_disable(DEVICE(cpuobj), NULL, &error_fatal);
+    qdev_disable(DEVICE(cpuobj), &error_fatal);
 
     if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
         object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
@@ -2881,7 +2881,7 @@ static void machvirt_init(MachineState *machine)
         } else {
             /* 'Present' & 'Disabled' vCPUs */
             virt_setup_lazy_vcpu_realization(cpuobj, vms);
-            qdev_set_id(DEVICE(cpuobj), g_strdup_printf("%cpu-%d", n),
+            qdev_set_id(DEVICE(cpuobj), g_strdup_printf("cpu#%d", n),
                         &error_fatal);
         }
 

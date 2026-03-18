@@ -728,7 +728,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id = qdict_get_try_str(opts, "id");
+    const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
@@ -1057,12 +1057,9 @@ void qmp_device_del(const char *id, Error **errp)
 
 void qmp_device_set(const QDict *qdict, Error **errp)
 {
-    char *id = qdict_get_try_str(opts, "id");
-    const char *state;
+    const char *id = qdict_get_try_str(qdict, "id");
     const char *driver;
-    DeviceState *dev;
     DeviceClass *dc;
-    const char *id;
 
     /* check driver exists and we are at the right phase of machine init */
     if (migration_is_running()) {
