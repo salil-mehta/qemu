@@ -2005,6 +2005,10 @@ virt_cpu_pre_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      * it is powered on. Saves boot time; later power-ons skips this.
      */
     if (!dev->realized) {
+        /* set cpu's parent and register its id. */
+        if (!qdev_set_id(dev, g_strdup_printf("cpu#%d", cs->cpu_index), errp)) {
+            return;
+        }
         qdev_realize(dev, NULL, errp);
         /* qemu_init_vcpu() sets CPUState::stopped=true; resume now */
         cpu_resume(cs);
@@ -2567,7 +2571,7 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
      */
 
     /* set this vCPU to be administratively 'disabled' in QOM */
-    qdev_disable(DEVICE(cpuobj), NULL, &error_fatal);
+    qdev_disable(DEVICE(cpuobj), &error_fatal);
 
     if (vms->psci_conduit != QEMU_PSCI_CONDUIT_DISABLED) {
         object_property_set_int(cpuobj, "psci-conduit", vms->psci_conduit,
@@ -2881,8 +2885,6 @@ static void machvirt_init(MachineState *machine)
         } else {
             /* 'Present' & 'Disabled' vCPUs */
             virt_setup_lazy_vcpu_realization(cpuobj, vms);
-            qdev_set_id(DEVICE(cpuobj), g_strdup_printf("%cpu-%d", n),
-                        &error_fatal);
         }
 
         /*

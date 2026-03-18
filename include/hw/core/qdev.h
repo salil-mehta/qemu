@@ -577,6 +577,21 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
 /**
+ * qdev_has_alias:
+ * @target: the object to check for existing aliases
+ *
+ * Search both the standard peripheral and anonymous peripheral containers
+ * to determine if any QOM alias property currently points to @target
+ *
+ * This is particularly useful for management logic that needs to ensure
+ * a physical device (like a boot-time CPU) is not assigned multiple
+ * user-facing IDs or aliases simultaneously.
+ *
+ * Returns: %true if an alias pointing to @target exists, %false otherwise
+ */
+bool qdev_has_alias(Object *target);
+
+/**
  * qdev_disable - Initiate administrative disablement and power-off of device
  * @dev:   The device to be administratively powered off
  * @errp:  Pointer to a location where an error can be reported

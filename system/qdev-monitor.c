@@ -589,10 +589,44 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
-void qdev_set_alias(DeviceState *dev, char *alias_id, char *target_name)
+bool qdev_has_alias(Object *target)
 {
+    const char *canon = object_get_canonical_path_component(target);
+    Object *parent = target->parent;
+    Object *containers[] = {
+        qdev_get_peripheral(),
+        qdev_get_peripheral_anon(),
+        NULL
+    };
+
+    for (int i = 0; containers[i]; i++) {
+        ObjectProperty *prop;
+        ObjectPropertyIterator iter;
+
+        object_property_iter_init(&iter, containers[i]);
+        while ((prop = object_property_iter_next(&iter))) {
+            if (containers[i] == parent && canon &&
+                strcmp(prop->name, canon) == 0) {
+                continue;
+            }
+
+            if (object_resolve_path_component(containers[i], prop->name) ==
+                target) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+void qdev_set_alias(DeviceState *dev, const char *alias_id)
+{
+    Object *dev_obj = OBJECT(dev);
     Object *parent_container;
     gchar *final_name;
+    Object *dev_parent;
+    const char *target_name = object_get_canonical_path_component(dev_obj);
 
     if (alias_id) {
         parent_container = qdev_get_peripheral();
@@ -603,8 +637,10 @@ void qdev_set_alias(DeviceState *dev, char *alias_id, char *target_name)
         final_name = g_strdup_printf("alias-device[%d]", anon_count++);
     }
 
-    object_property_add_alias(parent_container, final_name, OBJECT(dev),
-                              target_name ? target_name : "");
+    dev_parent = dev_obj->parent;
+
+    object_property_add_alias(parent_container, final_name, dev_parent,
+                              target_name);
 
     g_free(final_name);
 }
@@ -661,7 +697,7 @@ BusState *qdev_find_default_bus(DeviceClass *dc, Error **errp)
 }
 
 static DeviceState *
-qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
+qmp_device_find_and_enable(const QDict *qdict, char *id, Error **errp)
 {
     ERRP_GUARD();
     const char *driver = qdict_get_try_str(qdict, "driver");
@@ -678,14 +714,14 @@ qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
         return NULL;
     }
 
-    if (object_has_alias(OBJECT(dev))) {
+    if (qdev_has_alias(OBJECT(dev))) {
         error_setg(errp,
-                   "Device(driver %s) is already managed under a different ID",
-                   driver);
-        return NULL;
+        "Device(driver %s) is already managed under a different ID",
+        driver);
     }
+
     /* create alias so that device can be managed by user now */
-    qdev_set_alias(dev, id, NULL);
+    qdev_set_alias(dev, id);
 
     if (!qdev_enable(dev, errp)) {
         return NULL;
@@ -700,7 +736,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id = qdict_get_try_str(opts, "id");
+    const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
@@ -753,7 +789,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
 
     /* devices can be power-managed(on/off) or hot-{add,remov}'ed */
     if (dc->admin_power_state_supported) {
-        dev = qmp_device_find_and_enable(opts, id, errp);
+        dev = qmp_device_find_and_enable(opts, g_strdup(id), errp);
         return dev;
     }
 
@@ -1029,12 +1065,9 @@ void qmp_device_del(const char *id, Error **errp)
 
 void qmp_device_set(const QDict *qdict, Error **errp)
 {
-    char *id = qdict_get_try_str(opts, "id");
-    const char *state;
+    const char *id = qdict_get_try_str(qdict, "id");
     const char *driver;
-    DeviceState *dev;
     DeviceClass *dc;
-    const char *id;
 
     /* check driver exists and we are at the right phase of machine init */
     if (migration_is_running()) {
@@ -1054,7 +1087,7 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         return;
     }
 
-    qmp_device_find_and_enable(qdict, id, errp);
+    qmp_device_find_and_enable(qdict, g_strdup(id), errp);
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
