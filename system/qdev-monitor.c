@@ -705,7 +705,7 @@ qmp_device_find_and_enable(const QDict *qdict, const char *id, Error **errp)
         return NULL;
     }
 
-    if (object_has_alias(OBJECT(dev))) {
+    if (qdev_has_alias(OBJECT(dev))) {
         error_setg(errp,
                    "Device(driver %s) is already managed under a different ID",
                    driver);
