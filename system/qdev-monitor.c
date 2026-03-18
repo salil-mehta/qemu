@@ -589,7 +589,35 @@ static BusState *qbus_find(const char *path, Error **errp)
     return bus;
 }
 
-void qdev_set_alias(DeviceState *dev, char *alias_id, char *target_name)
+bool qdev_has_alias(Object *target)
+{
+    Object *containers[] = {
+        qdev_get_peripheral(),
+        qdev_get_peripheral_anon(),
+        NULL
+    };
+
+    for (int i = 0; containers[i]; i++) {
+        ObjectProperty *prop;
+        ObjectPropertyIterator iter;
+
+        object_property_iter_init(&iter, containers[i]);
+        while ((prop = object_property_iter_next(&iter))) {
+            if (g_str_has_prefix(prop->type, "alias")) {
+                Object *resolved;
+                resolved = object_resolve_path_component(containers[i],
+                                                         prop->name);
+                if (resolved == target) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void
+qdev_set_alias(DeviceState *dev, const char *alias_id, char *target_name)
 {
     Object *parent_container;
     gchar *final_name;

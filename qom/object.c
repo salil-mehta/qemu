@@ -2872,33 +2872,6 @@ object_property_add_alias(Object *obj, const char *name,
     return op;
 }
 
-bool object_has_alias(Object *target)
-{
-    Object *containers[] = {
-        qdev_get_peripheral(),
-        qdev_get_peripheral_anon(),
-        NULL
-    };
-
-    for (int i = 0; containers[i]; i++) {
-        ObjectProperty *prop;
-        ObjectPropertyIterator iter;
-
-        object_property_iter_init(&iter, containers[i]);
-        while ((prop = object_property_iter_next(&iter))) {
-            if (g_str_has_prefix(prop->type, "alias")) {
-                Object *resolved;
-                resolved = object_resolve_path_component(containers[i],
-                                                         prop->name);
-                if (resolved == target) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
 void object_property_set_description(Object *obj, const char *name,
                                      const char *description)
 {

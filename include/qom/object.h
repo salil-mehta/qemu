@@ -1953,21 +1953,6 @@ ObjectProperty *object_property_add_alias(Object *obj, const char *name,
                                Object *target_obj, const char *target_name);
 
 /**
- * object_has_alias:
- * @target: the object to check for existing aliases
- *
- * Search both the standard peripheral and anonymous peripheral containers
- * to determine if any QOM alias property currently points to @target
- *
- * This is particularly useful for management logic that needs to ensure
- * a physical device (like a boot-time CPU) is not assigned multiple
- * user-facing IDs or aliases simultaneously.
- *
- * Returns: %true if an alias pointing to @target exists, %false otherwise
- */
-bool object_has_alias(Object *target);
-
-/**
  * object_property_add_const_link:
  * @obj: the object to add a property to
  * @name: the name of the property
