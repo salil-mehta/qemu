@@ -732,7 +732,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id = qdict_get_try_str(opts, "id");
+    const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
