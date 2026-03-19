@@ -51,6 +51,7 @@
 #include "io/channel-tls.h"
 #include "migration/colo.h"
 #include "hw/core/boards.h"
+#include "hw/core/qdev.h"
 #include "monitor/monitor.h"
 #include "net/announce.h"
 #include "qemu/queue.h"
@@ -1961,9 +1962,28 @@ void qmp_migrate_pause(Error **errp)
                "during postcopy-active or postcopy-recover state");
 }
 
+static int migration_check_admin_disable(Object *obj, void *opaque)
+{
+    DeviceState *dev = (DeviceState *)object_dynamic_cast(obj, TYPE_DEVICE);
+    Error **errp = opaque;
+
+    if (dev && dev->admin_disable_pending) {
+        error_setg(errp, "Device '%s' administrative disable is pending",
+                   dev->admin_link_name ?: object_get_typename(obj));
+        return 1;
+    }
+    return 0;
+}
+
 bool migration_is_blocked(Error **errp)
 {
     GSList *blockers = migration_blockers[migrate_mode()];
+
+    /* An unfinished disable has not yet synchronized CPU and device state. */
+    if (object_child_foreach_recursive(object_get_root(),
+                                      migration_check_admin_disable, errp)) {
+        return true;
+    }
 
     if (qemu_savevm_state_blocked(errp)) {
         return true;

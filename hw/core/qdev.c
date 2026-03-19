@@ -414,6 +414,13 @@ qdev_remove_admin_link(DeviceState *dev, bool emit_event, Error **errp)
 
     g_clear_pointer(&dev->admin_link_name, g_free);
 
+    if (emit_event) {
+        qapi_event_send_device_deleted(name, path);
+    }
+
+    /* reset disable pending flag */
+    dev->admin_disable_pending = false;
+
     return true;
 }
 
@@ -440,6 +447,11 @@ qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
         return false;
     }
 
+    if (dev->admin_disable_pending) {
+        error_setg(errp, "Device administrative disable is pending");
+        return false;
+    }
+
     if (object_property_find(container, id)) {
         error_setg(errp, "Duplicate device ID '%s'", id);
         return false;
@@ -457,6 +469,35 @@ qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
     dev->admin_link_name = g_strdup(id);
 
     return true;
+}
+
+void qdev_sync_disable(DeviceState *dev, Error **errp)
+{
+    ERRP_GUARD();
+
+    g_assert(dev);
+    g_assert(powerstate_handler(dev));
+
+    /*
+     * Administrative disable triggered either after OSPM completes _EJx
+     * (post Notify(..., 0x03)), or due to lack of async shutdown support.
+     *
+     * Device may still appear in ACPI namespace but remains disabled at
+     * the platform level. Guest cannot re-enable it until host allows.
+     */
+
+    /* Perform operational shutdown */
+    device_post_poweroff(dev, errp);
+    if (*errp) {
+        return;
+    }
+
+    /* Mark the device administratively disabled */
+    qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
+    /* Order administrative availability before later device updates. */
+    smp_wmb();
+
+    qdev_remove_admin_link(dev, true, errp);
 }
 
 bool qdev_disable(DeviceState *dev, Error **errp)
@@ -887,17 +928,35 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 
     switch (new_state) {
     case DEVICE_ADMIN_POWER_STATE_DISABLED: {
+        if (old_state == DEVICE_ADMIN_POWER_STATE_DISABLED) {
+            break;
+        }
+
         /*
-         * TODO: The administrative state is being changed to disabled. Ask the
+         * The administrative state is being changed to disabled. Ask the
          * platform to start the runtime transition that makes the device no
          * longer operationally available. The platform may complete the
          * transition synchronously, or defer completion until after guest/OSPM
          * coordination.
          */
+        if (device_graceful_poweroff_supported(dev)) {
+            /* Graceful shutdown via guest coordination */
+            device_request_poweroff(dev, errp);
+            if (*errp) {
+                return;
+            }
 
-        qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
-        /* Order administrative availability before later device updates. */
-        smp_wmb();
+            qatomic_set(&dev->admin_power_state,
+                        DEVICE_ADMIN_POWER_STATE_DISABLED);
+            /* Order administrative availability before later device updates. */
+            smp_wmb();
+        } else {
+            /* Immediate shutdown within QEMU synchronously */
+            qdev_sync_disable(dev, errp);
+            if (*errp) {
+                return;
+            }
+        }
         break;
     }
     case DEVICE_ADMIN_POWER_STATE_ENABLED: {
