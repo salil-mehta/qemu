@@ -300,6 +300,10 @@ struct DeviceState {
      */
     int64_t pending_deleted_expires_ms;
     /**
+     * @opts: QDict of options for the device
+     */
+    QDict *opts;
+    /**
      * @hotplugged: was device added after PHASE_MACHINE_READY?
      */
     int hotplugged;

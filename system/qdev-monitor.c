@@ -34,6 +34,7 @@
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
 #include "qemu/help_option.h"
+#include "qemu/id.h"
 #include "qemu/option.h"
 #include "qemu/qemu-print.h"
 #include "qemu/option_int.h"
@@ -639,6 +640,8 @@ void qdev_set_alias(DeviceState *dev, const char *alias_id)
 
     dev_parent = dev_obj->parent;
 
+    warn_report("%s: dev->parent %p, target name %s\n", __func__, dev_parent,
+		target_name);
     object_property_add_alias(parent_container, final_name, dev_parent,
                               target_name);
 
@@ -713,19 +716,40 @@ qmp_device_find_and_enable(const QDict *qdict, char *id, Error **errp)
         error_setg(errp, "No device found for driver '%s'", driver);
         return NULL;
     }
+#if 0
+    if (OBJECT(dev)->parent) {
+        warn_report("[%s] dev parent exists  dev-ref %d, realized %d\n", __func__,
+                    OBJECT(dev)->ref, !!dev->realized);
+    } else {
+        warn_report("[%s] dev parent doesnot exist  dev-ref %d, realized %d\n", __func__,
+                    OBJECT(dev)->ref, !!dev->realized);
+    }
+    /* set 'anon-peripheral' container as device parent */
+    if (!OBJECT(dev)->parent && !dev->realized &&
+        !qdev_set_id(dev, NULL, errp)) {
+        return NULL;
+    }
 
     if (qdev_has_alias(OBJECT(dev))) {
         error_setg(errp,
         "Device(driver %s) is already managed under a different ID",
         driver);
     }
-
     /* create alias so that device can be managed by user now */
     qdev_set_alias(dev, id);
+#endif
+    dev->opts = qdict_clone_shallow(qdict);
+    warn_report("[%s] canon-path %s, dev-ref %d\n", __func__,
+		object_get_canonical_path_component(OBJECT(dev)),
+		OBJECT(dev)->ref);
 
     if (!qdev_enable(dev, errp)) {
         return NULL;
     }
+    warn_report("[%s] after enable  dev-ref %d, realized %d\n", __func__,
+                    OBJECT(dev)->ref, !!dev->realized);
+    warn_report("[%s] after enable,  dev-ref %d\n", __func__,
+		OBJECT(dev)->ref);
 
     return dev;
 }
@@ -739,7 +763,6 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
-    QDict *properties;
 
     if (migration_is_running()) {
         error_setg(errp, "device_add not allowed while migrating");
@@ -811,14 +834,13 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     }
 
     /* set properties */
-    properties = qdict_clone_shallow(opts);
-    qdict_del(properties, "driver");
-    qdict_del(properties, "bus");
-    qdict_del(properties, "id");
+    dev->opts = qdict_clone_shallow(opts);
+    qdict_del(dev->opts, "driver");
+    qdict_del(dev->opts, "bus");
+    qdict_del(dev->opts, "id");
 
-    object_set_properties_from_keyval(&dev->parent_obj, properties, from_json,
+    object_set_properties_from_keyval(&dev->parent_obj, dev->opts, from_json,
                                       errp);
-    qobject_unref(properties);
     if (*errp) {
         goto err_del_dev;
     }
@@ -981,6 +1003,14 @@ static DeviceState *find_device_state(const char *id, bool use_generic_error,
     Object *obj = object_resolve_path_at(qdev_get_peripheral(), id);
     DeviceState *dev;
 
+    if (id[0] != '/' && !id_wellformed(id)) {
+	error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "id",
+                   "an identifier");
+	error_append_hint(errp, "Identifiers consist of letters, digits, "
+                          "'-', '.', '_', starting with a letter.\n");
+        return NULL;
+    }
+
     if (!obj) {
         error_set(errp,
                   (use_generic_error ?
@@ -1044,7 +1074,7 @@ void qdev_unplug(DeviceState *dev, Error **errp)
 void qmp_device_del(const char *id, Error **errp)
 {
     DeviceState *dev = find_device_state(id, false, errp);
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+    DeviceClass *dc;
 
     if (dev != NULL) {
         if (dev->pending_deleted_event &&
@@ -1054,9 +1084,21 @@ void qmp_device_del(const char *id, Error **errp)
                              "process of unplug", id);
             return;
         }
+        warn_report("[%s] canon-path %s, strstr %s\n", __func__,
+		object_get_canonical_path_component(OBJECT(dev)),
+		strrchr("/machine/peripheral/@cpu#3", '/'));
+        dc = DEVICE_GET_CLASS(dev);
         /* devices can be power-managed(on/off) or hot-{add,remov}'ed */
         if (dc->admin_power_state_supported) {
+            warn_report("[%s] 1. before disable,  dev-ref %d\n", __func__,
+		        OBJECT(dev)->ref);
             qdev_disable(dev, errp);
+            warn_report("[%s] 2. after disable,  dev-ref %d\n", __func__,
+		        OBJECT(dev)->ref);
+            //object_unparent(OBJECT(dev));
+	    object_property_del(OBJECT(dev), id);
+            warn_report("[%s] 3. after disable, unparent,  dev-ref %d\n", __func__,
+		        OBJECT(dev)->ref);
         } else {
             qdev_unplug(dev, errp);
         }
