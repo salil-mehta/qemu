@@ -333,17 +333,136 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
-#if 0
-void qdev_sync_unplug(DeviceState *dev, Error **errp)
+static bool
+qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
 {
-    HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
+    ERRP_GUARD();
+    Object *container = qdev_get_peripheral();
+    ObjectProperty *prop;
+    Object *target;
+    g_autofree char *name = NULL;
+    g_autofree char *path = NULL;
 
-    hotplug_handler_unplug(hotplug_ctrl, dev, errp);
-    if (!errp || !*errp) {
-        object_unparent(OBJECT(dev));
+    if (!dev->admin_link_name) {
+        return true;
     }
+
+    name = g_strdup(dev->admin_link_name);
+    path = g_strdup_printf("/machine/peripheral/%s", name);
+
+    prop = object_property_find(container, name);
+    if (!prop || !prop->type || !g_str_has_prefix(prop->type, "link<")) {
+        error_setg(errp, "Admin link '%s' not found", name);
+        return false;
+    }
+
+    target = object_property_get_link(container, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (target != OBJECT(dev)) {
+        error_setg(errp, "Admin link '%s' points to wrong object", name);
+        return false;
+    }
+
+    object_property_del(container, name);
+
+    g_clear_pointer(&dev->admin_link_name, g_free);
+
+    if (emit_event) {
+        qapi_event_send_device_deleted(name, path);
+    }
+
+    /* reset disable pending flag */
+    dev->admin_disable_pending = false;
+
+    return true;
 }
-#endif
+
+static bool
+qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
+{
+    Object *container = qdev_get_peripheral();
+    ObjectProperty *prop;
+    g_autofree char *dev_path = NULL;
+
+    if (!id) {
+        error_setg(errp, "administrative enable requires device id");
+        return false;
+    }
+
+    if (id[0] == '/') {
+        error_setg(errp, "administrative enable requires plain device id");
+        return false;
+    }
+
+    if (dev->admin_link_name) {
+        error_setg(errp, "Device is already linked as '%s'",
+                   dev->admin_link_name);
+        return false;
+    }
+
+    if (dev->admin_disable_pending) {
+        error_setg(errp, "Device administrative disable is pending");
+        return false;
+    }
+
+    if (object_property_find(container, id)) {
+        error_setg(errp, "Duplicate device ID '%s'", id);
+        return false;
+    }
+
+    dev_path = object_get_canonical_path(OBJECT(dev));
+
+    /*
+     * Create:
+     *
+     *   /machine/peripheral/<id>
+     *       link<...> -> dev
+     *
+     * This does not reparent @dev.
+     */
+    prop = object_property_add_const_link(container, id, OBJECT(dev));
+    if (!prop) {
+        error_setg(errp, "Failed to link '%s' to device '%s'",
+                   id, dev_path ?: object_get_typename(OBJECT(dev)));
+        return false;
+    }
+
+    dev->admin_link_name = g_strdup(id);
+
+    return true;
+}
+
+static DeviceState *
+qdev_try_enable_existing_device(const QDict *qdict, const char *id,
+                                Error **errp)
+{
+    ERRP_GUARD();
+    DeviceState *dev;
+    Error *local_err = NULL;
+
+    dev = qdev_find_device(qdict, errp);
+    if (*errp || !dev) {
+        return NULL;
+    }
+
+    if (!qdev_add_admin_link(dev, id, errp)) {
+        return NULL;
+    }
+
+    qdev_enable(dev, errp);
+    if (*errp) {
+        qdev_remove_admin_link(dev, false, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+        }
+        return NULL;
+    }
+
+    return dev;
+}
 
 void qdev_sync_unplug(DeviceState *dev, Error **errp)
 {
