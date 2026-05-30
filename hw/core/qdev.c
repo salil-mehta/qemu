@@ -349,6 +349,11 @@ bool qdev_disable(DeviceState *dev, Error **errp)
     bool ret;
     g_assert(dev);
 
+    if (migration_is_running()) {
+        error_setg(errp, "device disable not allowed while migrating");
+        return false;
+    }
+
     ret = object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
                                    errp);
 
@@ -377,6 +382,8 @@ void qdev_sync_disable(DeviceState *dev, Error **errp)
     /* Mark the device administratively disabled */
     qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
     smp_wmb();
+
+    qdev_remove_admin_link(dev, true, errp);
 }
 
 bool qdev_enable(DeviceState *dev, Error **errp)
@@ -389,14 +396,11 @@ bool qdev_enable(DeviceState *dev, Error **errp)
 
 int qdev_get_admin_power_state(DeviceState *dev)
 {
-    DeviceClass *dc;
-
     if (!dev) {
         return DEVICE_ADMIN_POWER_STATE_REMOVED;
     }
 
-    dc = DEVICE_GET_CLASS(dev);
-    if (dc->admin_power_state_supported) {
+    if (check_admin_state_change_support(dev)) {
         return object_property_get_enum(OBJECT(dev), "admin_power_state",
                                         "DeviceAdminPowerState", NULL);
     }
@@ -777,11 +781,10 @@ static void
 device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     DeviceAdminPowerState old_state;
 
     warn_report("%s:1. dev %s\n", __func__, dev->id);
-    if (!dc->admin_power_state_supported) {
+    if (!check_admin_state_change_support(dev)) {
         error_setg(errp, "Device '%s' admin power state change not supported",
                    object_get_typename(obj));
         return;

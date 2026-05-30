@@ -2007,20 +2007,6 @@ virt_cpu_pre_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      * it is powered on. Saves boot time; later power-ons skips this.
      */
     if (!dev->realized) {
-        const char *id = qdict_get_try_str(dev->opts, "id");
-//#if 0
-        /* set cpu's parent and register its id. */
-        if (!qdev_set_id(dev, g_strdup_printf("@cpu#%d", cs->cpu_index), errp)) {
-        //if (!qdev_set_id(dev, NULL, errp)) {
-            return;
-        }
-
-        if (qdev_has_alias(OBJECT(dev))) {
-             error_setg(errp, "Couldn't set alias for device %s", dev->id);
-	}
-        /* create alias so that device can be managed by user now */
-        qdev_set_alias(dev, g_strdup(id));
-//#endif
         qdev_realize(dev, NULL, errp);
         /* qemu_init_vcpu() sets CPUState::stopped=true; resume now */
         cpu_resume(cs);
@@ -2899,6 +2885,15 @@ static void machvirt_init(MachineState *machine)
             object_unref(cpuobj);
         } else {
             /* 'Present' & 'Disabled' vCPUs */
+            /*
+             * Keep these vCPUs under the 'unattached' container. Later, create
+             * ID-based links/aliases under the 'peripheral' container so that
+             * these CPU objects can be accessed by ID. This will be done when
+             * an administrator enables or disables a possible vCPU with
+             * device_add/device_del command.
+             */
+            qdev_set_id(DEVICE(cpuobj), NULL, &error_fatal);
+
             virt_setup_lazy_vcpu_realization(cpuobj, vms);
         }
 

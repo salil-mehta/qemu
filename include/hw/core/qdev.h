@@ -292,6 +292,19 @@ struct DeviceState {
      */
     DeviceAdminPowerState admin_power_state;
     /**
+     * @admin_link_name: Name of the /machine/peripheral/<name> link pointing
+     * to this device.  Set while the device is managed through the
+     * administrative enable/disable path; cleared when no longer needed.
+     */
+    char *admin_link_name;
+    /**
+     * @admin_disable_pending: Whether administrative disable has been requested
+     * and final disable completion is still pending.
+     *
+     * This is transient state.  Migration is rejected while this is true;
+     */
+    bool admin_disable_pending;
+    /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
     bool pending_deleted_event;
@@ -654,6 +667,20 @@ bool qdev_enable(DeviceState *dev, Error **errp);
  * Returns true if the device is administratively enabled; false otherwise.
  */
 bool qdev_check_enabled(DeviceState *dev);
+
+/**
+ * check_admin_state_change_support - Check if a device can be administratively
+ * enabled or disabled or set to another state.
+ * @dev:  The device to check
+ *
+ * Returns true if the device is administratively enabled; false otherwise.
+ */
+static inline bool check_admin_state_change_support(DeviceState *dev)
+{
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+
+    return dc->admin_power_state_supported
+}
 
 /**
  * qdev_get_admin_power_state - Query administrative power state of a device
