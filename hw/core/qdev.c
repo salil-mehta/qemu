@@ -337,7 +337,7 @@ static bool
 qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
 {
     ERRP_GUARD();
-    Object *container = qdev_get_peripheral();
+    Object *container = machine_get_container("peripheral");
     ObjectProperty *prop;
     Object *target;
     g_autofree char *name = NULL;
@@ -383,7 +383,7 @@ qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
 static bool
 qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
 {
-    Object *container = qdev_get_peripheral();
+    Object *container = machine_get_container("peripheral");
     ObjectProperty *prop;
     g_autofree char *dev_path = NULL;
 
