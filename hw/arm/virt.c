@@ -3589,11 +3589,6 @@ static void machvirt_init(MachineState *machine)
         }
     }
 
-    if (mc->has_online_capable_cpus) {
-        max_cpus = smp_cpus + machine->smp.disabledcpus;
-        machine->smp.max_cpus = max_cpus;
-    }
-
     if (max_cpus > virt_max_cpus) {
         error_report("Number of SMP CPUs requested (%d) exceeds max CPUs "
                      "supported by machine 'mach-virt' (%d)",
