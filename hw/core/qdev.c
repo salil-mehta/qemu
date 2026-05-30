@@ -448,6 +448,15 @@ qdev_try_enable_existing_device(const QDict *qdict, const char *id,
         return NULL;
     }
 
+    /*
+     * As of now, hotplug and admin change support are mutually exclusive but
+     * this might change in future
+     */
+    if (qdev_get_hotplug_handler(dev) &&
+        check_admin_state_change_support(dev)) {
+        return NULL;
+    }
+
     if (!qdev_add_admin_link(dev, id, errp)) {
         return NULL;
     }

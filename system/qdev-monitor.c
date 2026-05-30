@@ -706,15 +706,12 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
      * Try to resolve and enable an existing object first; if none matches,
      * continue with normal qdev creation.
      */
-    if (!qdev_hotunplug_allowed(dev, errp) &&
-            check_admin_state_change_support(dev)) {
-        dev = qdev_try_enable_existing_device(opts, id, errp);
-        if (*errp) {
-            return NULL;
-        }
-        if(dev) {
-            return dev;
-        }
+    dev = qdev_try_enable_existing_device(opts, id, errp);
+    if (*errp) {
+        return NULL;
+    }
+    if(dev) {
+        return dev;
     }
 
     /* create device */
