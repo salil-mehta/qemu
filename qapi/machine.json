@@ -1725,9 +1725,6 @@
 #
 # @cpus: number of virtual CPUs in the virtual machine
 #
-# @disabledcpus: number of additional present but disabled(or offline)
-#                CPUs
-#
 # @maxcpus: maximum number of hotpluggable virtual CPUs in the virtual
 #     machine
 #
@@ -1751,7 +1748,6 @@
 ##
 { 'struct': 'SMPConfiguration', 'data': {
      '*cpus': 'int',
-     '*disabledcpus': 'int',
      '*drawers': 'int',
      '*books': 'int',
      '*sockets': 'int',
