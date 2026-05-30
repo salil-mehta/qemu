@@ -1052,49 +1052,6 @@ static DeviceState *find_device_state(const char *id, bool use_generic_error,
     return dev;
 }
 
-void qdev_sync_unplug(DeviceState *dev, Error **errp)
-{
-    HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
-
-    hotplug_handler_unplug(hotplug_ctrl, dev, errp);
-    if (!errp || !*errp) {
-        object_unparent(OBJECT(dev));
-    }
-}
-
-void qdev_unplug(DeviceState *dev, Error **errp)
-{
-    HotplugHandler *hotplug_ctrl;
-    HotplugHandlerClass *hdc;
-    Error *local_err = NULL;
-
-    if (!qdev_hotunplug_allowed(dev, errp)) {
-        return;
-    }
-
-    if (migration_is_running() && !dev->allow_unplug_during_migration) {
-        error_setg(errp, "device_del not allowed while migrating");
-        return;
-    }
-
-    qdev_hot_removed = true;
-
-    hotplug_ctrl = qdev_get_hotplug_handler(dev);
-    /* hotpluggable device MUST have HotplugHandler, if it doesn't
-     * then something is very wrong with it */
-    g_assert(hotplug_ctrl);
-
-    /* If device supports async unplug just request it to be done,
-     * otherwise just remove it synchronously */
-    hdc = HOTPLUG_HANDLER_GET_CLASS(hotplug_ctrl);
-    if (hdc->unplug_request) {
-        hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
-    } else {
-        qdev_sync_unplug(dev, &local_err);
-    }
-    error_propagate(errp, local_err);
-}
-
 void qmp_device_del(const char *id, Error **errp)
 {
     ERRP_GUARD();
