@@ -39,6 +39,7 @@
 #include "hw/core/sysbus.h"
 #include "hw/core/qdev-clock.h"
 #include "migration/vmstate.h"
+#include "migration/misc.h"
 #include "trace.h"
 #include "hw/core/hotplug.h"
 
@@ -229,7 +230,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 }
 
 DeviceState *
-qdev_find_device(const QDict *opts, Error **errp)
+qdev_find_device(const QDict *opts, bool from_json, Error **errp)
 {
     ERRP_GUARD();
     DeviceListener *listener;
@@ -237,7 +238,7 @@ qdev_find_device(const QDict *opts, Error **errp)
 
     QTAILQ_FOREACH(listener, &device_listeners, link) {
         if (listener->find_device) {
-            dev = listener->find_device(listener, opts, errp);
+            dev = listener->find_device(listener, opts, from_json, errp);
             if (*errp) {
                 return NULL;
             } else if (dev) {
@@ -332,7 +333,160 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
-#if 0
+char *qdev_get_qom_access_path(DeviceState *dev)
+{
+    Object *container;
+    g_autofree char *container_path = NULL;
+
+    if (!qdev_check_enabled(dev)) {
+        return NULL;
+    }
+
+    if (dev->admin_link_name) {
+        container = machine_get_container("peripheral");
+        container_path = object_get_canonical_path(container);
+        if (!container_path) {
+            return NULL;
+        }
+
+        return g_strdup_printf("%s/%s", container_path, dev->admin_link_name);
+    }
+
+    return object_get_canonical_path(OBJECT(dev));
+}
+
+static bool
+qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
+{
+    ERRP_GUARD();
+    Object *container = machine_get_container("peripheral");
+    ObjectProperty *prop;
+    Object *target;
+    g_autofree char *name = NULL;
+    g_autofree char *path = NULL;
+
+    if (!dev->admin_link_name) {
+        return true;
+    }
+
+    name = g_strdup(dev->admin_link_name);
+    path = g_strdup_printf("/machine/peripheral/%s", name);
+
+    prop = object_property_find(container, name);
+    if (!prop || !prop->type || !g_str_has_prefix(prop->type, "link<")) {
+        error_setg(errp, "Admin link '%s' not found", name);
+        return false;
+    }
+
+    target = object_property_get_link(container, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (target != OBJECT(dev)) {
+        error_setg(errp, "Admin link '%s' points to wrong object", name);
+        return false;
+    }
+
+    object_property_del(container, name);
+
+    g_clear_pointer(&dev->admin_link_name, g_free);
+
+    if (emit_event) {
+        qapi_event_send_device_deleted(name, path);
+    }
+
+    /* reset disable pending flag */
+    dev->admin_disable_pending = false;
+
+    return true;
+}
+
+static bool
+qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
+{
+    Object *container = machine_get_container("peripheral");
+    ObjectProperty *prop;
+    g_autofree char *dev_path = NULL;
+
+    if (!id) {
+        error_setg(errp, "administrative enable requires device id");
+        return false;
+    }
+
+    if (id[0] == '/') {
+        error_setg(errp, "administrative enable requires plain device id");
+        return false;
+    }
+
+    if (dev->admin_link_name) {
+        error_setg(errp, "Device is already linked as '%s'",
+                   dev->admin_link_name);
+        return false;
+    }
+
+    if (dev->admin_disable_pending) {
+        error_setg(errp, "Device administrative disable is pending");
+        return false;
+    }
+
+    if (object_property_find(container, id)) {
+        error_setg(errp, "Duplicate device ID '%s'", id);
+        return false;
+    }
+
+    dev_path = object_get_canonical_path(OBJECT(dev));
+
+    prop = object_property_add_const_link(container, id, OBJECT(dev));
+    if (!prop) {
+        error_setg(errp, "Failed to link '%s' to device '%s'",
+                   id, dev_path ?: object_get_typename(OBJECT(dev)));
+        return false;
+    }
+
+    dev->admin_link_name = g_strdup(id);
+
+    return true;
+}
+
+DeviceState *
+qdev_try_enable_existing_device(const QDict *qdict, bool from_json,
+                                const char *id, Error **errp)
+{
+    ERRP_GUARD();
+    DeviceState *dev;
+    Error *local_err = NULL;
+
+    dev = qdev_find_device(qdict, from_json, errp);
+    if (*errp || !dev) {
+        return NULL;
+    }
+
+    /*
+     * As of now, hotplug and admin change support are mutually exclusive but
+     * this might change in future
+     */
+    if (qdev_get_hotplug_handler(dev) ||
+        !check_admin_state_change_support(dev)) {
+        return NULL;
+    }
+
+    if (!qdev_add_admin_link(dev, id, errp)) {
+        return NULL;
+    }
+
+    qdev_enable(dev, errp);
+    if (*errp) {
+        qdev_remove_admin_link(dev, false, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+        }
+        return NULL;
+    }
+
+    return dev;
+}
+
 void qdev_sync_unplug(DeviceState *dev, Error **errp)
 {
     HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
@@ -342,12 +496,49 @@ void qdev_sync_unplug(DeviceState *dev, Error **errp)
         object_unparent(OBJECT(dev));
     }
 }
-#endif
+
+void qdev_unplug(DeviceState *dev, Error **errp)
+{
+    HotplugHandler *hotplug_ctrl;
+    HotplugHandlerClass *hdc;
+    Error *local_err = NULL;
+
+    if (!qdev_hotunplug_allowed(dev, errp)) {
+        return;
+    }
+
+    if (migration_is_running() && !dev->allow_unplug_during_migration) {
+        error_setg(errp, "device_del not allowed while migrating");
+        return;
+    }
+
+    qdev_hot_removed = true;
+
+    hotplug_ctrl = qdev_get_hotplug_handler(dev);
+    /* hotpluggable device MUST have HotplugHandler, if it doesn't
+     * then something is very wrong with it */
+    g_assert(hotplug_ctrl);
+
+    /* If device supports async unplug just request it to be done,
+     * otherwise just remove it synchronously */
+    hdc = HOTPLUG_HANDLER_GET_CLASS(hotplug_ctrl);
+    if (hdc->unplug_request) {
+        hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
+    } else {
+        qdev_sync_unplug(dev, &local_err);
+    }
+    error_propagate(errp, local_err);
+}
 
 bool qdev_disable(DeviceState *dev, Error **errp)
 {
     bool ret;
     g_assert(dev);
+
+    if (migration_is_running()) {
+        error_setg(errp, "device disable not allowed while migrating");
+        return false;
+    }
 
     ret = object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
                                    errp);
@@ -377,6 +568,8 @@ void qdev_sync_disable(DeviceState *dev, Error **errp)
     /* Mark the device administratively disabled */
     qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_DISABLED);
     smp_wmb();
+
+    qdev_remove_admin_link(dev, true, errp);
 }
 
 bool qdev_enable(DeviceState *dev, Error **errp)
@@ -389,14 +582,11 @@ bool qdev_enable(DeviceState *dev, Error **errp)
 
 int qdev_get_admin_power_state(DeviceState *dev)
 {
-    DeviceClass *dc;
-
     if (!dev) {
         return DEVICE_ADMIN_POWER_STATE_REMOVED;
     }
 
-    dc = DEVICE_GET_CLASS(dev);
-    if (dc->admin_power_state_supported) {
+    if (check_admin_state_change_support(dev)) {
         return object_property_get_enum(OBJECT(dev), "admin_power_state",
                                         "DeviceAdminPowerState", NULL);
     }
@@ -777,11 +967,10 @@ static void
 device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
-    DeviceClass *dc = DEVICE_GET_CLASS(dev);
     DeviceAdminPowerState old_state;
 
     warn_report("%s:1. dev %s\n", __func__, dev->id);
-    if (!dc->admin_power_state_supported) {
+    if (!check_admin_state_change_support(dev)) {
         error_setg(errp, "Device '%s' admin power state change not supported",
                    object_get_typename(obj));
         return;

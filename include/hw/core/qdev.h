@@ -292,6 +292,19 @@ struct DeviceState {
      */
     DeviceAdminPowerState admin_power_state;
     /**
+     * @admin_link_name: Name of the /machine/peripheral/<name> link pointing
+     * to this device.  Set while the device is managed through the
+     * administrative enable/disable path; cleared when no longer needed.
+     */
+    char *admin_link_name;
+    /**
+     * @admin_disable_pending: Whether administrative disable has been requested
+     * and final disable completion is still pending.
+     *
+     * This is transient state.  Migration is rejected while this is true;
+     */
+    bool admin_disable_pending;
+    /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
     bool pending_deleted_event;
@@ -377,9 +390,8 @@ struct DeviceListener {
       * Returns the `DeviceState` on sucess and NULL if device was not found.
       * On errors, it returns NULL and errp is set
       */
-     DeviceState * (*find_device)(DeviceListener *listener,
-          const QDict *device_opts,
-          Error **errp);
+    DeviceState * (*find_device)(DeviceListener *listener,
+                   const QDict *device_opts,  bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -580,20 +592,15 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
  */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
-/**
- * qdev_has_alias:
- * @target: the object to check for existing aliases
+/*
+ * qdev_get_qom_access_path - Return a QOM path that can be used to access @dev
  *
- * Search both the standard peripheral and anonymous peripheral containers
- * to determine if any QOM alias property currently points to @target
+ * If @dev is managed through an admin link, return that link path.
+ * Otherwise return the device's canonical QOM path.
  *
- * This is particularly useful for management logic that needs to ensure
- * a physical device (like a boot-time CPU) is not assigned multiple
- * user-facing IDs or aliases simultaneously.
- *
- * Returns: %true if an alias pointing to @target exists, %false otherwise
+ * The returned string must be freed with g_free().
  */
-bool qdev_has_alias(Object *target);
+char *qdev_get_qom_access_path(DeviceState *dev);
 
 /**
  * qdev_disable - Initiate administrative disablement and power-off of device
@@ -656,6 +663,20 @@ bool qdev_enable(DeviceState *dev, Error **errp);
 bool qdev_check_enabled(DeviceState *dev);
 
 /**
+ * check_admin_state_change_support - Check if a device can be administratively
+ * enabled or disabled or set to another state.
+ * @dev:  The device to check
+ *
+ * Returns true if the device is administratively enabled; false otherwise.
+ */
+static inline bool check_admin_state_change_support(DeviceState *dev)
+{
+    DeviceClass *dc = DEVICE_GET_CLASS(dev);
+
+    return dc->admin_power_state_supported;
+}
+
+/**
  * qdev_get_admin_power_state - Query administrative power state of a device
  * @dev:  The device whose state is being queried
  *
@@ -705,6 +726,8 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
+DeviceState *qdev_try_enable_existing_device(const QDict *qdict, bool from_json,
+                                             const char *id, Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
 void qdev_sync_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);
@@ -1281,6 +1304,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * qdev_find_device() - find the device
  *
  * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
  * @errp: pointer to error object
  *
  * Called when device state is toggled via qdev_device_state()
@@ -1288,7 +1312,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * Return: a DeviceState on success and NULL on failure
  */
 DeviceState *
-qdev_find_device(const QDict *opts, Error **errp);
+qdev_find_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */
