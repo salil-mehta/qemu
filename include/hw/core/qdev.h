@@ -732,6 +732,8 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
+DeviceState *qdev_try_enable_existing_device(const QDict *qdict, const char *id,
+                                             Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
 void qdev_sync_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);

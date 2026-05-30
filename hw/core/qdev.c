@@ -435,7 +435,7 @@ qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
     return true;
 }
 
-static DeviceState *
+DeviceState *
 qdev_try_enable_existing_device(const QDict *qdict, const char *id,
                                 Error **errp)
 {
