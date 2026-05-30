@@ -679,7 +679,7 @@ static inline bool check_admin_state_change_support(DeviceState *dev)
 {
     DeviceClass *dc = DEVICE_GET_CLASS(dev);
 
-    return dc->admin_power_state_supported
+    return dc->admin_power_state_supported;
 }
 
 /**
