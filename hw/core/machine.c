@@ -1353,8 +1353,7 @@ CPUState *machine_get_possible_cpu(int64_t cpu_index)
 
     for (int i = 0; i < possible_cpus->len; i++) {
     warn_report("%s pos->cpu_index=%d, cpu-index %ld\n", __func__,
-                possible_cpus->cpus[i].cpu,
-                possible_cpus->cpus[i].cpu->cpu_index);
+                possible_cpus->cpus[i].cpu->cpu_index, cpu_index);
         if (possible_cpus->cpus[i].cpu &&
             possible_cpus->cpus[i].cpu->cpu_index == cpu_index) {
             return possible_cpus->cpus[i].cpu;
