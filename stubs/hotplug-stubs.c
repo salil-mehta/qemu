@@ -32,3 +32,23 @@ void hotplug_handler_plug(HotplugHandler *plug_handler,
 {
     g_assert_not_reached();
 }
+
+void hotplug_handler_unplug_request(HotplugHandler *plug_handler,
+                                    DeviceState *plugged_dev,
+                                    Error **errp)
+{
+    g_assert_not_reached();
+}
+
+void hotplug_handler_unplug(HotplugHandler *plug_handler,
+                            DeviceState *plugged_dev,
+                            Error **errp)
+{
+    g_assert_not_reached();
+}
+
+bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp)
+{
+    g_assert_not_reached();
+    return false;
+}

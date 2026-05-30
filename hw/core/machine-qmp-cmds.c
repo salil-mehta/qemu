@@ -242,7 +242,7 @@ CPUPowerStateInfoList *qmp_query_cpus_power_state(Error **errp)
         info->vcpus_count = arch_id->vcpus_count;
         info->has_vcpus_count = true;
 
-        info->qom_path = object_get_canonical_path(OBJECT(cpu));
+        info->qom_path = qdev_get_qom_access_path(DEVICE(cpu));
 
         /* Determine current power state */
         switch (qdev_get_admin_power_state(DEVICE(cpu))) {
