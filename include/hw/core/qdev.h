@@ -593,20 +593,15 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
  */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 
-/**
- * qdev_has_alias:
- * @target: the object to check for existing aliases
+/*
+ * qdev_get_qom_access_path - Return a QOM path that can be used to access @dev
  *
- * Search both the standard peripheral and anonymous peripheral containers
- * to determine if any QOM alias property currently points to @target
+ * If @dev is managed through an admin link, return that link path.
+ * Otherwise return the device's canonical QOM path.
  *
- * This is particularly useful for management logic that needs to ensure
- * a physical device (like a boot-time CPU) is not assigned multiple
- * user-facing IDs or aliases simultaneously.
- *
- * Returns: %true if an alias pointing to @target exists, %false otherwise
+ * The returned string must be freed with g_free().
  */
-bool qdev_has_alias(Object *target);
+char *qdev_get_qom_access_path(DeviceState *dev);
 
 /**
  * qdev_disable - Initiate administrative disablement and power-off of device

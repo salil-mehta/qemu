@@ -2887,7 +2887,7 @@ static void machvirt_init(MachineState *machine)
              * an administrator enables or disables a possible vCPU with
              * device_add/device_del command.
              */
-            qdev_set_id(DEVICE(cpuobj), NULL, &error_fatal);
+            //qdev_set_id(DEVICE(cpuobj), NULL, &error_fatal);
 
             virt_setup_lazy_vcpu_realization(cpuobj, vms);
         }
