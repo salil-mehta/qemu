@@ -76,6 +76,7 @@
 #include "hw/firmware/smbios.h"
 #include "qapi/visitor.h"
 #include "qapi/qapi-visit-common.h"
+#include "qapi/qobject-input-visitor.h"
 #include "qobject/qlist.h"
 #include "qobject/qdict.h"
 #include "standard-headers/linux/input.h"
@@ -1884,71 +1885,411 @@ void virt_machine_done(Notifier *notifier, void *data)
     virt_build_smbios(vms);
 }
 
-static DeviceState *virt_find_cpu(const QDict *opts, Error **errp)
+static Visitor *virt_cpu_input_visitor(QObject *qobj, bool from_json)
 {
-    int64_t socket_id, cluster_id, core_id, thread_id;
-    MachineState *ms = MACHINE(qdev_get_machine());
-    int64_t T, C, K, cpu_id;
-    CPUState *cpu;
-    const char *s;
+    return from_json ? qobject_input_visitor_new(qobj) :
+                       qobject_input_visitor_new_keyval(qobj);
+}
 
-    /* parse topology */
-    socket_id  = (s = qdict_get_try_str(opts, "socket-id")) ?
-                  strtoll(s, NULL, 10) : 0;
-    cluster_id = (s = qdict_get_try_str(opts, "cluster-id")) ?
-                 strtoll(s, NULL, 10) : 0;
-    core_id    = (s = qdict_get_try_str(opts, "core-id")) ?
-                 strtoll(s, NULL, 10) : 0;
-    thread_id  = (s = qdict_get_try_str(opts, "thread-id")) ?
-                 strtoll(s, NULL, 10) : 0;
+static bool virt_match_cpu_bool_prop(Object *obj, QObject *qobj,
+                                     const char *name, bool from_json,
+                                     Error **errp)
+{
+    bool requested;
+    bool existing;
+    Visitor *v;
+
+    ERRP_GUARD();
+
+    v = virt_cpu_input_visitor(qobj, from_json);
+    if (!visit_type_bool(v, NULL, &requested, errp)) {
+        visit_free(v);
+        return false;
+    }
+    visit_free(v);
+
+    existing = object_property_get_bool(obj, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (existing != requested) {
+        error_setg(errp, "property '%s' mismatch (requested %s, existing %s)",
+                   name, requested ? "on" : "off", existing ? "on" : "off");
+        return false;
+    }
+
+    return true;
+}
+
+static bool virt_match_cpu_int_prop(Object *obj, QObject *qobj,
+                                    const char *name, bool from_json,
+                                    Error **errp)
+{
+    Visitor *v;
+    int64_t requested;
+    int64_t existing;
+
+    ERRP_GUARD();
+
+    v = virt_cpu_input_visitor(qobj, from_json);
+    if (!visit_type_int(v, NULL, &requested, errp)) {
+        visit_free(v);
+        return false;
+    }
+    visit_free(v);
+
+    existing = object_property_get_int(obj, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (existing != requested) {
+        error_setg(errp, "CPU property '%s' mismatch: requested %" PRId64
+                   ", existing %" PRId64, name, requested, existing);
+        return false;
+    }
+
+    return true;
+}
+
+static bool virt_match_cpu_uint_prop(Object *obj, QObject *qobj,
+                                     const char *name, bool from_json,
+                                     bool is_size, Error **errp)
+{
+    Visitor *v;
+    uint64_t requested;
+    uint64_t existing;
+    bool ok;
+
+    ERRP_GUARD();
+
+    v = virt_cpu_input_visitor(qobj, from_json);
+
+    if (is_size) {
+        ok = visit_type_size(v, NULL, &requested, errp);
+    } else {
+        ok = visit_type_uint64(v, NULL, &requested, errp);
+    }
+
+    visit_free(v);
+
+    if (!ok) {
+        return false;
+    }
+
+    existing = object_property_get_uint(obj, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (existing != requested) {
+        error_setg(errp, "CPU property '%s' mismatch: requested %" PRIu64
+                   ", existing %" PRIu64, name, requested, existing);
+        return false;
+    }
+
+    return true;
+}
+
+static bool virt_match_cpu_string_prop(Object *obj, QObject *qobj,
+                                       const char *name, bool from_json,
+                                       Error **errp)
+{
+    Visitor *v;
+    g_autofree char *requested = NULL;
+    g_autofree char *existing = NULL;
+
+    ERRP_GUARD();
+
+    v = virt_cpu_input_visitor(qobj, from_json);
+
+    if (!visit_type_str(v, NULL, &requested, errp)) {
+        visit_free(v);
+        return false;
+    }
+
+    visit_free(v);
+
+    existing = object_property_get_str(obj, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (g_strcmp0(existing, requested)) {
+        error_setg(errp,
+                   "CPU property '%s' mismatch: requested '%s', existing '%s'",
+                   name, requested ?: "", existing ?: "");
+        return false;
+    }
+
+    return true;
+}
+static bool virt_match_cpu_printable_prop(Object *obj, QObject *qobj,
+                                          const char *name, const char *type,
+                                          bool from_json, Error **errp)
+{
+    Visitor *v;
+    g_autofree char *requested = NULL;
+    g_autofree char *existing = NULL;
+
+    ERRP_GUARD();
+
+    /*
+     * Most enum-like qdev/QOM properties are supplied as strings.
+     */
+    v = virt_cpu_input_visitor(qobj, from_json);
+
+    if (!visit_type_str(v, NULL, &requested, errp)) {
+        visit_free(v);
+        return false;
+    }
+
+    visit_free(v);
+
+    existing = object_property_print(obj, name, false, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (g_strcmp0(existing, requested)) {
+        error_setg(errp,
+                   "CPU property '%s' mismatch: requested '%s', existing '%s'",
+                   name, requested ?: "", existing ?: "");
+        return false;
+    }
+
+    return true;
+}
+
+static bool virt_match_one_cpu_qom_prop(Object *obj, const QDict *props,
+                                        const char *name, bool from_json,
+                                        Error **errp)
+{
+    const char *type;
+    QObject *qobj;
+    bool is_size;
+
+    qobj = qdict_get(props, name);
+    if (!qobj) {
+        error_setg(errp, "Missing CPU property '%s'", name);
+        return false;
+    }
+
+    type = object_property_get_type(obj, name, errp);
+    if (!type) {
+        return false;
+    }
+
+    if (!strcmp(type, "bool")) {
+        return virt_match_cpu_bool_prop(obj, qobj, name, from_json, errp);
+    }
+
+    if (g_str_has_prefix(type, "int")) {
+        return virt_match_cpu_int_prop(obj, qobj, name, from_json, errp);
+    }
+
+    is_size = !strcmp(type, "size");
+    if (g_str_has_prefix(type, "uint") || is_size) {
+        return virt_match_cpu_uint_prop(obj, qobj, name, from_json, is_size,
+                                        errp);
+    }
+
+    if (!strcmp(type, "string") || !strcmp(type, "str")) {
+        return virt_match_cpu_string_prop(obj, qobj, name, from_json, errp);
+    }
+
+    /* Fallback for enum-like or printable QOM properties. */
+    return virt_match_cpu_printable_prop(obj, qobj, name, type, from_json,
+                                         errp);
+}
+
+static bool virt_match_cpu_qom_props(Object *obj, const QDict *props,
+                                     bool from_json, Error **errp)
+{
+    const QDictEntry *e;
+
+    for (e = qdict_first(props); e; e = qdict_next(props, e)) {
+        if (!virt_match_one_cpu_qom_prop(obj, props, e->key, from_json, errp)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void virt_add_default_cpu_topology_opts(QDict *props, bool from_json)
+{
+    static const char * const topo_props[] = {
+        "socket-id",
+        "cluster-id",
+        "core-id",
+        "thread-id",
+    };
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(topo_props); i++) {
+        const char *name = topo_props[i];
+
+        if (qdict_haskey(props, name)) {
+            continue;
+        }
+
+        if (from_json) {
+            qdict_put_int(props, name, 0);
+        } else {
+            qdict_put_str(props, name, "0");
+        }
+    }
+}
+
+static bool
+virt_match_user_opts_against_cpu_props(CPUState *cpu, const QDict *opts,
+                                       bool from_json, Error **errp)
+{
+    Object *obj = OBJECT(cpu);
+    QDict *props;
+    bool ret;
+
+    props = qdict_clone_shallow(opts);
+
+    qdict_del(props, "driver");
+    qdict_del(props, "id");
+    qdict_del(props, "bus");
+
+    /*
+     * Omitted topology fields mean 0. Add them so they are still compared
+     * against the existing CPU object's QOM properties.
+     */
+    virt_add_default_cpu_topology_opts(props, from_json);
+
+    ret = virt_match_cpu_qom_props(obj, props, from_json, errp);
+
+    qobject_unref(QOBJECT(props));
+    return ret;
+}
+
+static bool virt_parse_cpu_topo_id(const QDict *opts, const char *name,
+                                   bool from_json, int64_t defval,
+                                   int64_t *val, Error **errp)
+{
+    QObject *qobj = qdict_get(opts, name);
+    Visitor *v;
+
+    if (!qobj) {
+        *val = defval;
+        return true;
+    }
+
+    v = virt_cpu_input_visitor(qobj, from_json);
+    if (!visit_type_int(v, NULL, val, errp)) {
+        visit_free(v);
+        return false;
+    }
+
+    visit_free(v);
+    return true;
+
+}
+
+static int virt_get_cpu_id_from_user_topo_info(const QDict *opts,
+                                               bool from_json,
+                                               Error **errp)
+{
+    MachineState *ms = MACHINE(qdev_get_machine());
+    CPUArchIdList *possible_cpus = ms->possible_cpus;
+    int64_t socket_id, cluster_id, core_id, thread_id;
+    int64_t T, C, K, cpu_id;
+
+    if (!virt_parse_cpu_topo_id(opts, "socket-id", from_json,
+                                0, &socket_id, errp) ||
+        !virt_parse_cpu_topo_id(opts, "cluster-id", from_json,
+                                0, &cluster_id, errp) ||
+        !virt_parse_cpu_topo_id(opts, "core-id", from_json,
+                                0, &core_id, errp) ||
+        !virt_parse_cpu_topo_id(opts, "thread-id", from_json,
+                                0, &thread_id, errp)) {
+        return -1;
+    }
 
     /* Range checks */
     if (thread_id < 0 || thread_id >= ms->smp.threads) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid thread-id %ld",
                    socket_id, cluster_id, core_id, thread_id, thread_id);
-        return NULL;
+        return -1;
     }
     if (core_id < 0 || core_id >= ms->smp.cores) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid core-id %ld",
                    socket_id, cluster_id, core_id, thread_id, core_id);
-        return NULL;
+        return -1;
     }
     if (cluster_id < 0 || cluster_id >= ms->smp.clusters) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid cluster-id %ld",
                    socket_id, cluster_id, core_id, thread_id, cluster_id);
-        return NULL;
+        return -1;
     }
     if (socket_id < 0 || socket_id >= ms->smp.sockets) {
         error_setg(errp,
                    "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid socket-id %ld",
                    socket_id, cluster_id, core_id, thread_id, socket_id);
-        return NULL;
+        return -1;
     }
 
     /* Compute logical CPU index: t + T*(c + C*(k + K*s)). */
     T = ms->smp.threads;
     C = ms->smp.cores;
     K = ms->smp.clusters;
+
     cpu_id = thread_id + T * (core_id + C * (cluster_id + K * socket_id));
 
-    cpu = machine_get_possible_cpu((int)cpu_id);
+    if (cpu_id < 0 || cpu_id >= possible_cpus->len || cpu_id > INT_MAX) {
+        error_setg(errp, "Couldn't find cpu(%" PRId64 ":%" PRId64 ":%" PRId64
+                   ":%" PRId64 "), invalid cpu-index %" PRId64, socket_id,
+                   cluster_id, core_id, thread_id, cpu_id);
+        return -1;
+    }
+
+    return cpu_id;
+}
+
+static DeviceState *virt_find_cpu(const QDict *opts, bool from_json,
+                                  Error **errp)
+{
+    CPUState *cpu;
+    int cpu_id;
+
+    cpu_id = virt_get_cpu_id_from_user_topo_info(opts, from_json, errp);
+    if (cpu_id < 0) {
+        return NULL;
+    }
+
+    cpu = machine_get_possible_cpu(cpu_id);
     if (!cpu) {
-        error_setg(errp,
-                   "Couldn't find cpu(%ld:%ld:%ld:%ld), Invalid cpu-index %ld",
-                   socket_id, cluster_id, core_id, thread_id, cpu_id);
+        error_setg(errp, "Couldn't find cpu at cpu-index %d, "
+                         "no pre-created CPU object exists", cpu_id);
+        return NULL;
+    }
+
+    /* for now, all cpus must be exactly same */
+    if (!virt_match_user_opts_against_cpu_props(cpu, opts, from_json, errp)) {
+        error_prepend(errp, "cpu-index %d: ", cpu_id);
+        error_append_hint(errp,
+                          "ARM architectural limitation: CPU add must match the"
+                          " pre-created CPU object; changing per-CPU properties"
+                          " after machine initialization is not supported\n");
         return NULL;
     }
 
     object_ref(OBJECT(cpu));
-
     return DEVICE(cpu);
 }
 
 static DeviceState *
-virt_find_device(DeviceListener *listener, const QDict *opts, Error **errp)
+virt_find_device(DeviceListener *listener, const QDict *opts,  bool from_json,
+                 Error **errp)
 {
     const char *typename;
 
@@ -1962,7 +2303,7 @@ virt_find_device(DeviceListener *listener, const QDict *opts, Error **errp)
     }
 
     if (cpu_typename_is_a(typename, TYPE_ARM_CPU)) {
-        return virt_find_cpu(opts, errp);
+        return virt_find_cpu(opts, from_json, errp);
     }
 
     return NULL;

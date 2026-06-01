@@ -390,9 +390,8 @@ struct DeviceListener {
       * Returns the `DeviceState` on sucess and NULL if device was not found.
       * On errors, it returns NULL and errp is set
       */
-     DeviceState * (*find_device)(DeviceListener *listener,
-          const QDict *device_opts,
-          Error **errp);
+    DeviceState * (*find_device)(DeviceListener *listener,
+                   const QDict *device_opts,  bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -727,8 +726,8 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
-DeviceState *qdev_try_enable_existing_device(const QDict *qdict, const char *id,
-                                             Error **errp);
+DeviceState *qdev_try_enable_existing_device(const QDict *qdict, bool from_json,
+                                             const char *id, Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
 void qdev_sync_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);
@@ -1305,6 +1304,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * qdev_find_device() - find the device
  *
  * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
  * @errp: pointer to error object
  *
  * Called when device state is toggled via qdev_device_state()
@@ -1312,7 +1312,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
  * Return: a DeviceState on success and NULL on failure
  */
 DeviceState *
-qdev_find_device(const QDict *opts, Error **errp);
+qdev_find_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

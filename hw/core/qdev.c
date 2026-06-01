@@ -230,7 +230,7 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
 }
 
 DeviceState *
-qdev_find_device(const QDict *opts, Error **errp)
+qdev_find_device(const QDict *opts, bool from_json, Error **errp)
 {
     ERRP_GUARD();
     DeviceListener *listener;
@@ -238,7 +238,7 @@ qdev_find_device(const QDict *opts, Error **errp)
 
     QTAILQ_FOREACH(listener, &device_listeners, link) {
         if (listener->find_device) {
-            dev = listener->find_device(listener, opts, errp);
+            dev = listener->find_device(listener, opts, from_json, errp);
             if (*errp) {
                 return NULL;
             } else if (dev) {
@@ -450,14 +450,14 @@ qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
 }
 
 DeviceState *
-qdev_try_enable_existing_device(const QDict *qdict, const char *id,
-                                Error **errp)
+qdev_try_enable_existing_device(const QDict *qdict, bool from_json,
+                                const char *id, Error **errp)
 {
     ERRP_GUARD();
     DeviceState *dev;
     Error *local_err = NULL;
 
-    dev = qdev_find_device(qdict, errp);
+    dev = qdev_find_device(qdict, from_json, errp);
     if (*errp || !dev) {
         return NULL;
     }
@@ -466,8 +466,8 @@ qdev_try_enable_existing_device(const QDict *qdict, const char *id,
      * As of now, hotplug and admin change support are mutually exclusive but
      * this might change in future
      */
-    if (qdev_get_hotplug_handler(dev) &&
-        check_admin_state_change_support(dev)) {
+    if (qdev_get_hotplug_handler(dev) ||
+        !check_admin_state_change_support(dev)) {
         return NULL;
     }
 

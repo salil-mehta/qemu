@@ -706,7 +706,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
      * Try to resolve and enable an existing object first; if none matches,
      * continue with normal qdev creation.
      */
-    dev = qdev_try_enable_existing_device(opts, id, errp);
+    dev = qdev_try_enable_existing_device(opts, from_json, id, errp);
     if (*errp) {
         return NULL;
     }
@@ -994,7 +994,7 @@ void qmp_device_set(const QDict *qdict, Error **errp)
         return;
     }
 
-    qdev_try_enable_existing_device(qdict, g_strdup(id), errp);
+    qdev_try_enable_existing_device(qdict, false, g_strdup(id), errp);
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
