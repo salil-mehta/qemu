@@ -438,14 +438,6 @@ qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
 
     dev_path = object_get_canonical_path(OBJECT(dev));
 
-    /*
-     * Create:
-     *
-     *   /machine/peripheral/<id>
-     *       link<...> -> dev
-     *
-     * This does not reparent @dev.
-     */
     prop = object_property_add_const_link(container, id, OBJECT(dev));
     if (!prop) {
         error_setg(errp, "Failed to link '%s' to device '%s'",
