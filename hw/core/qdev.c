@@ -343,14 +343,13 @@ char *qdev_get_qom_access_path(DeviceState *dev)
     }
 
     if (dev->admin_link_name) {
-        container = machine_get_container("peripheral");;
+        container = machine_get_container("peripheral");
         container_path = object_get_canonical_path(container);
         if (!container_path) {
             return NULL;
         }
 
-        return g_strdup_printf("%s/%s", container_path,
-                               dev->admin_link_name);
+        return g_strdup_printf("%s/%s", container_path, dev->admin_link_name);
     }
 
     return object_get_canonical_path(OBJECT(dev));
