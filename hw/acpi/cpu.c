@@ -247,9 +247,10 @@ static AcpiCpuStatus *get_cpu_status(CPUHotplugState *cpu_st, DeviceState *dev)
     return NULL;
 }
 
-void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_plug_cb(DeviceState *acpi_dev,
                       CPUHotplugState *cpu_st, DeviceState *dev, Error **errp)
 {
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     AcpiCpuStatus *cdev;
 
     cdev = get_cpu_status(cpu_st, dev);
@@ -257,14 +258,20 @@ void acpi_cpu_plug_cb(HotplugHandler *hotplug_dev,
         return;
     }
 
+    /*
+     * Tell OSPM via GED IRQ(GSI) that a CPU has been hotplugged or
+     * administratively enabled and is available for the guest to bring online
+     * Also mark the device-check event pending for this CPU. This results in
+     * OSPM evaluating the ACPI _EVT method and rescanning CPUs.
+     */
     cdev->cpu = CPU(dev);
-    if (dev->hotplugged) {
+    if (dev->hotplugged || mc->has_online_capable_cpus) {
         cdev->is_inserting = true;
-        acpi_send_event(DEVICE(hotplug_dev), ACPI_CPU_HOTPLUG_STATUS);
+        acpi_send_event(acpi_dev, ACPI_CPU_HOTPLUG_STATUS);
     }
 }
 
-void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
+void acpi_cpu_unplug_request_cb(DeviceState *acpi_dev,
                                 CPUHotplugState *cpu_st,
                                 DeviceState *dev, Error **errp)
 {
@@ -275,14 +282,25 @@ void acpi_cpu_unplug_request_cb(HotplugHandler *hotplug_dev,
         return;
     }
 
+    /*
+     * Tell OSPM that a CPU hot-unplug or administrative disable request is
+     * pending. Record the pending CPU eject request so that OSPM can drive
+     * the graceful CPU offline path.
+     */
     cdev->is_removing = true;
-    acpi_send_event(DEVICE(hotplug_dev), ACPI_CPU_HOTPLUG_STATUS);
+    acpi_send_event(acpi_dev, ACPI_CPU_HOTPLUG_STATUS);
 }
 
 void acpi_cpu_unplug_cb(CPUHotplugState *cpu_st,
                         DeviceState *dev, Error **errp)
 {
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
     AcpiCpuStatus *cdev;
+
+    if (mc->has_online_capable_cpus) {
+        /* future possible handling */
+        return;
+    }
 
     cdev = get_cpu_status(cpu_st, dev);
     if (!cdev) {
