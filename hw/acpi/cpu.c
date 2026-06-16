@@ -63,7 +63,7 @@ static uint64_t cpu_hotplug_rd(void *opaque, hwaddr addr, unsigned size)
     cdev = &cpu_st->devs[cpu_st->selector];
     switch (addr) {
     case ACPI_CPU_FLAGS_OFFSET_RW: /* pack and return is_* fields */
-        val |= cdev->cpu ? 1 : 0;
+        val |= qdev_check_enabled(DEVICE(cdev->cpu)) ? 1 : 0;
         val |= cdev->is_inserting ? 2 : 0;
         val |= cdev->is_removing  ? 4 : 0;
         val |= cdev->fw_remove  ? 16 : 0;
@@ -443,15 +443,22 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
 
         method = aml_method(CPU_STS_METHOD, 1, AML_SERIALIZED);
         {
-            Aml *idx = aml_arg(0);
+            /*
+             * Set the default _STA as 'disabled'. For always-present CPUs, all
+             * bits except 'enabled' are set as-per ACPI 1.0b (Section 6.3.5).
+             * This applies to machines supporting CPU online operations after
+             * the initial boot.
+             */
+            Aml *defsta = aml_int(mc->has_online_capable_cpus ? 0xd : 0);
             Aml *sta = aml_local(0);
+            Aml *idx = aml_arg(0);
 
             aml_append(method, aml_acquire(ctrl_lock, 0xFFFF));
             aml_append(method, aml_store(idx, cpu_selector));
-            aml_append(method, aml_store(zero, sta));
+            aml_append(method, aml_store(defsta, sta));
             ifctx = aml_if(aml_equal(is_enabled, one));
             {
-                aml_append(ifctx, aml_store(aml_int(0xF), sta));
+                 aml_append(ifctx, aml_store(aml_int(0xF), sta));
             }
             aml_append(method, ifctx);
             aml_append(method, aml_release(ctrl_lock));
