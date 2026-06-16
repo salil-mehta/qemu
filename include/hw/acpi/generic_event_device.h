@@ -113,6 +113,7 @@ typedef struct GEDState {
 
 #define ACPI_PCIHP_REGION_NAME "pcihp container"
 #define ACPI_MEMHP_REGION_NAME "memhp container"
+#define ACPI_CPUHP_REGION_NAME "cpuhp container"
 
 struct AcpiGedState {
     SysBusDevice parent_obj;
