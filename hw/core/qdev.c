@@ -36,6 +36,7 @@
 #include "hw/core/irq.h"
 #include "hw/core/qdev-properties.h"
 #include "hw/core/boards.h"
+#include "hw/core/powerstate.h"
 #include "hw/core/qdev.h"
 #include "hw/core/sysbus.h"
 #include "hw/core/qdev-clock.h"
@@ -229,6 +230,27 @@ bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp)
     return false;
 }
 
+DeviceState *
+qdev_find_device(const QDict *opts, bool from_json, Error **errp)
+{
+    ERRP_GUARD();
+    DeviceListener *listener;
+    DeviceState *dev;
+
+    QTAILQ_FOREACH(listener, &device_listeners, link) {
+        if (listener->find_device) {
+            dev = listener->find_device(listener, opts, from_json, errp);
+            if (*errp) {
+                return NULL;
+            } else if (dev) {
+                return dev;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
                                  int required_for_version)
 {
@@ -312,12 +334,142 @@ void qdev_assert_realized_properly(void)
                                    qdev_assert_realized_properly_cb, NULL);
 }
 
+static bool
+qdev_remove_admin_link(DeviceState *dev, bool emit_event,Error **errp)
+{
+    ERRP_GUARD();
+    Object *container = machine_get_container("peripheral");
+    ObjectProperty *prop;
+    Object *target;
+    g_autofree char *name = NULL;
+    g_autofree char *path = NULL;
+
+    if (!dev->admin_link_name) {
+        return true;
+    }
+
+    name = g_strdup(dev->admin_link_name);
+    path = g_strdup_printf("/machine/peripheral/%s", name);
+
+    prop = object_property_find(container, name);
+    if (!prop || !prop->type || !g_str_has_prefix(prop->type, "link<")) {
+        error_setg(errp, "Admin link '%s' not found", name);
+        return false;
+    }
+
+    target = object_property_get_link(container, name, errp);
+    if (*errp) {
+        return false;
+    }
+
+    if (target != OBJECT(dev)) {
+        error_setg(errp, "Admin link '%s' points to wrong object", name);
+        return false;
+    }
+
+    object_property_del(container, name);
+
+    g_clear_pointer(&dev->admin_link_name, g_free);
+
+    return true;
+}
+
+static bool
+qdev_add_admin_link(DeviceState *dev, const char *id, Error **errp)
+{
+    Object *container = machine_get_container("peripheral");
+    ObjectProperty *prop;
+    g_autofree char *dev_path = NULL;
+
+    if (!id) {
+        error_setg(errp, "administrative enable requires device id");
+        return false;
+    }
+
+    if (id[0] == '/') {
+        error_setg(errp, "administrative enable requires plain device id");
+        return false;
+    }
+
+    if (dev->admin_link_name) {
+        error_setg(errp, "Device is already linked as '%s'",
+                   dev->admin_link_name);
+        return false;
+    }
+
+    if (object_property_find(container, id)) {
+        error_setg(errp, "Duplicate device ID '%s'", id);
+        return false;
+    }
+
+    dev_path = object_get_canonical_path(OBJECT(dev));
+
+    prop = object_property_add_const_link(container, id, OBJECT(dev));
+    if (!prop) {
+        error_setg(errp, "Failed to link '%s' to device '%s'",
+                   id, dev_path ?: object_get_typename(OBJECT(dev)));
+        return false;
+    }
+
+    dev->admin_link_name = g_strdup(id);
+
+    return true;
+}
+
 bool qdev_disable(DeviceState *dev, Error **errp)
 {
     g_assert(dev);
 
     return(object_property_set_str(OBJECT(dev), "admin_power_state", "disabled",
                                    errp));
+}
+
+bool qdev_enable(DeviceState *dev, Error **errp)
+{
+    g_assert(dev);
+
+    return object_property_set_str(OBJECT(dev), "admin_power_state", "enabled",
+                                    errp);
+}
+
+DeviceState *
+qdev_try_add_admin_link_and_enable_existing_device(const QDict *qdict,
+                                                   bool from_json,
+                                                   const char *id, Error **errp)
+{
+    ERRP_GUARD();
+    DeviceState *dev;
+    Error *local_err = NULL;
+
+    dev = qdev_find_device(qdict, from_json, errp);
+    if (*errp || !dev) {
+        return NULL;
+    }
+
+    /*
+     * As of now, hotplug and admin change support are mutually exclusive but
+     * this might change in future
+     */
+    if (qdev_get_hotplug_handler(dev) ||
+        !check_admin_state_change_support(dev)) {
+        return NULL;
+    }
+
+    /* make the discovered device manageable via a link with 'ID' */
+    if (!qdev_add_admin_link(dev, id, errp)) {
+        return NULL;
+    }
+
+    qdev_enable(dev, errp);
+    if (*errp) {
+        qdev_remove_admin_link(dev, false, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+        }
+        return NULL;
+    }
+
+    return dev;
 }
 
 int qdev_get_admin_power_state(DeviceState *dev)
@@ -697,12 +849,16 @@ static void
 device_set_admin_power_state(Object *obj, int new_state, Error **errp)
 {
     DeviceState *dev = DEVICE(obj);
+    DeviceAdminPowerState old_state;
 
     if (!check_admin_state_change_support(dev)) {
         error_setg(errp, "Device '%s' admin power state change not supported",
                    object_get_typename(obj));
         return;
     }
+
+    g_assert(powerstate_handler(dev));
+    old_state = qatomic_read(&dev->admin_power_state);
 
     switch (new_state) {
     case DEVICE_ADMIN_POWER_STATE_DISABLED: {
@@ -719,15 +875,23 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         break;
     }
     case DEVICE_ADMIN_POWER_STATE_ENABLED: {
-        /*
-         *TODO:The administrative state is now enabled. Run the pre_poweron hook
-         * so that platform can prepare any runtime state needed before the
-         * device becomes operationally available, including any required
-         * guest-visible notification.
-         */
+        if (old_state == DEVICE_ADMIN_POWER_STATE_ENABLED) {
+            break;
+        }
 
         qatomic_set(&dev->admin_power_state, DEVICE_ADMIN_POWER_STATE_ENABLED);
         smp_wmb();
+
+        /*
+         * The administrative state is now enabled. Run the pre_poweron hook
+         * so the platform can prepare any runtime state needed before the
+         * device becomes operationally available, including any required
+         * guest-visible notification.
+         */
+        device_pre_poweron(dev, errp);
+        if (*errp) {
+            return;
+        }
         break;
     }
     default:

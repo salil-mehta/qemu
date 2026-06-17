@@ -265,7 +265,7 @@ static DeviceClass *qdev_get_device_class(const char **driver, Error **errp)
     }
 
     dc = DEVICE_CLASS(oc);
-    if (!dc->user_creatable) {
+    if (!dc->user_creatable && !dc->admin_power_state_supported) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "driver",
                    "a pluggable device type");
         return NULL;
@@ -655,10 +655,15 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
     ERRP_GUARD();
     DeviceClass *dc;
     const char *driver, *path;
-    char *id;
+    const char *id = qdict_get_try_str(opts, "id");
     DeviceState *dev;
     BusState *bus = NULL;
     QDict *properties;
+
+    if (migration_is_running()) {
+        error_setg(errp, "device_add not allowed while migrating");
+        return NULL;
+    }
 
     driver = qdict_get_try_str(opts, "driver");
     if (!driver) {
@@ -701,9 +706,23 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
         return NULL;
     }
 
-    if (migration_is_running()) {
-        error_setg(errp, "device_add not allowed while migrating");
+    /*
+     * Some machines pre-create devices that remain unavailable until they are
+     * administratively enabled. Before creating a new QOM object, try to
+     * satisfy device_add by resolving @opts to one of those existing disabled
+     * devices.
+     *
+     * On success, install @id as the /machine/peripheral management link for
+     * that object and administratively enable it. If no matching existing
+     * device is found, fall through to normal qdev device creation.
+     */
+    dev = qdev_try_add_admin_link_and_enable_existing_device(opts, from_json,
+                                                             id, errp);
+    if (*errp) {
         return NULL;
+    }
+    if (dev) {
+        return dev;
     }
 
     /* create device */
@@ -719,8 +738,7 @@ DeviceState *qdev_device_add_from_qdict(const QDict *opts,
      * set dev's parent and register its id.
      * If it fails it means the id is already taken.
      */
-    id = g_strdup(qdict_get_try_str(opts, "id"));
-    if (!qdev_set_id(dev, id, errp)) {
+    if (!qdev_set_id(dev, g_strdup(id), errp)) {
         goto err_del_dev;
     }
 

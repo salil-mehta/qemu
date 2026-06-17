@@ -291,6 +291,12 @@ struct DeviceState {
      */
     DeviceAdminPowerState admin_power_state;
     /**
+     * @admin_link_name: Name of the /machine/peripheral/<name> link pointing
+     * to this device.  Set while the device is managed through the
+     * administrative enable/disable path; cleared when no longer needed.
+     */
+    char *admin_link_name;
+    /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
     bool pending_deleted_event;
@@ -366,6 +372,14 @@ struct DeviceListener {
      */
     bool (*hide_device)(DeviceListener *listener, const QDict *device_opts,
                         bool from_json, Error **errp);
+     /*
+      * Used by qdev to find any device corresponding to the device opts
+      *
+      * Returns the `DeviceState` on sucess and NULL if device was not found.
+      * On errors, it returns NULL and errp is set
+      */
+    DeviceState * (*find_device)(DeviceListener *listener,
+                   const QDict *device_opts,  bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -562,6 +576,20 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_disable(DeviceState *dev, Error **errp);
 
 /**
+ * qdev_enable - Power on and administratively enable a device
+ * @dev:   The device to be powered on and administratively enabled
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function performs both administrative and operational power-on of
+ * the specified device. It transitions the device into ENABLED state and
+ * restores runtime availability. If applicable, the device is also re-added
+ * to the migration stream.
+ *
+ * Returns true if the operation succeeds; false otherwise, with @errp set.
+ */
+bool qdev_enable(DeviceState *dev, Error **errp);
+
+/**
  * qdev_check_enabled - Check if a device is administratively enabled
  * @dev:  The device to check
  *
@@ -637,6 +665,27 @@ bool qdev_hotunplug_allowed(DeviceState *dev, Error **errp);
  * or NULL if there aren't any.
  */
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev);
+/**
+ * qdev_try_add_admin_link_and_enable_existing_device:
+ * @qdict: qdev/device_add options used to identify the existing device
+ * @from_json: true if @qdict entries are typed, false for keyval strings
+ * @id: management id to install under /machine/peripheral
+ * @errp: pointer to a location where an error can be reported
+ *
+ * Try to satisfy a device_add request without creating a new QOM object.
+ * Machine code may resolve @qdict to a pre-created, administratively disabled
+ * device. If a match is found, install @id as its administrative management
+ * link and transition the device to the administratively enabled state.
+ *
+ * Return: the enabled device if the device_add request was consumed, or NULL
+ * if no existing device matched and normal qdev creation should continue. On
+ * error, return NULL with @errp set.
+ */
+DeviceState *
+qdev_try_add_admin_link_and_enable_existing_device(const QDict *qdict,
+                                                   bool from_json,
+                                                   const char *id,
+                                                   Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
@@ -1224,6 +1273,20 @@ void device_listener_unregister(DeviceListener *listener);
  * Return: if the device should be added now or not.
  */
 bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
+
+/**
+ * qdev_find_device() - find the device
+ *
+ * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
+ * @errp: pointer to error object
+ *
+ * Called when device state is toggled via qdev_device_state()
+ *
+ * Return: a DeviceState on success and NULL on failure
+ */
+DeviceState *
+qdev_find_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */
