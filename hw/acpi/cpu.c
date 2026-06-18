@@ -131,8 +131,8 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             cdev->is_removing = false;
             trace_cpuhp_acpi_clear_remove_evt(cpu_st->selector);
         } else if (data & 8) {
-            DeviceState *dev = NULL;
-            HotplugHandler *hotplug_ctrl = NULL;
+            MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+            DeviceState *dev;
 
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_ejecting_invalid_cpu(cpu_st->selector);
@@ -141,10 +141,13 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
 
             trace_cpuhp_acpi_ejecting_cpu(cpu_st->selector);
             dev = DEVICE(cdev->cpu);
-            hotplug_ctrl = qdev_get_hotplug_handler(dev);
-            hotplug_handler_unplug(hotplug_ctrl, dev, NULL);
-            object_unparent(OBJECT(dev));
-            cdev->fw_remove = false;
+            /* unplug or disable the vCPU synchronously now */
+            if (mc->has_online_capable_cpus) {
+                qdev_sync_disable(dev, &error_fatal);
+            } else {
+                qdev_sync_unplug(dev, NULL);
+                cdev->fw_remove = false;
+            }
         } else if (data & 16) {
             if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_fw_remove_invalid_cpu(cpu_st->selector);

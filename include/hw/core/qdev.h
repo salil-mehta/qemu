@@ -297,6 +297,13 @@ struct DeviceState {
      */
     char *admin_link_name;
     /**
+     * @admin_disable_pending: Whether administrative disable has been requested
+     * and final disable completion is still pending.
+     *
+     * This is transient state.  Migration is rejected while this is true;
+     */
+    bool admin_disable_pending;
+    /**
      * @pending_deleted_event: track pending deletion events during unplug
      */
     bool pending_deleted_event;
@@ -576,6 +583,22 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
 bool qdev_disable(DeviceState *dev, Error **errp);
 
 /**
+ * qdev_sync_disable - Force immediate power-off and administrative disable
+ * @dev:   The device to be powered off and administratively disabled
+ * @errp:  Pointer to a location where an error can be reported
+ *
+ * This function performs a synchronous power-off of the device and marks it
+ * as administratively DISABLED. It assumes that prior graceful handling (e.g.,
+ * ACPI _EJx) has already been completed, or that asynchronous mechanisms are
+ * unsupported.
+ *
+ * After execution, the device remains visible to the guest (e.g. via ACPI),
+ * but cannot be brought back online unless explicitly re-enabled via admin
+ * policy. This function also removes the device from the migration stream.
+ */
+void qdev_sync_disable(DeviceState *dev, Error **errp);
+
+/**
  * qdev_enable - Power on and administratively enable a device
  * @dev:   The device to be powered on and administratively enabled
  * @errp:  Pointer to a location where an error can be reported
@@ -687,6 +710,7 @@ qdev_try_add_admin_link_and_enable_existing_device(const QDict *qdict,
                                                    const char *id,
                                                    Error **errp);
 void qdev_unplug(DeviceState *dev, Error **errp);
+void qdev_sync_unplug(DeviceState *dev, Error **errp);
 int qdev_sync_config(DeviceState *dev, Error **errp);
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
