@@ -930,6 +930,16 @@ static DeviceState *find_device_state(const char *id, bool use_generic_error,
     return dev;
 }
 
+void qdev_sync_unplug(DeviceState *dev, Error **errp)
+{
+    HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(dev);
+
+    hotplug_handler_unplug(hotplug_ctrl, dev, errp);
+    if (!errp || !*errp) {
+        object_unparent(OBJECT(dev));
+    }
+}
+
 void qdev_unplug(DeviceState *dev, Error **errp)
 {
     HotplugHandler *hotplug_ctrl;
@@ -958,28 +968,67 @@ void qdev_unplug(DeviceState *dev, Error **errp)
     if (hdc->unplug_request) {
         hotplug_handler_unplug_request(hotplug_ctrl, dev, &local_err);
     } else {
-        hotplug_handler_unplug(hotplug_ctrl, dev, &local_err);
-        if (!local_err) {
-            object_unparent(OBJECT(dev));
-        }
+        qdev_sync_unplug(dev, &local_err);
     }
     error_propagate(errp, local_err);
 }
 
+
 void qmp_device_del(const char *id, Error **errp)
 {
-    DeviceState *dev = find_device_state(id, false, errp);
-    if (dev != NULL) {
-        if (dev->pending_deleted_event &&
-            (dev->pending_deleted_expires_ms == 0 ||
-             dev->pending_deleted_expires_ms > qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL))) {
-            error_setg(errp, "Device %s is already in the "
-                             "process of unplug", id);
+    ERRP_GUARD();
+    DeviceState *dev;
+    Error *unplug_err = NULL;
+
+    dev = find_device_state(id, false, errp);
+    if (!dev) {
+        return;
+    }
+
+    if (dev->pending_deleted_event &&
+        (dev->pending_deleted_expires_ms == 0 ||
+         dev->pending_deleted_expires_ms >
+         qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL))) {
+        error_setg(errp, "Device %s is already in the process of unplug", id);
+        return;
+    }
+
+    if (dev->admin_disable_pending) {
+        error_setg(errp, "Device %s administrative disable is already pending",
+                   id);
+        return;
+    }
+
+    /*
+     * Prefer the existing hot-unplug path. If hot-unplug is not allowed and
+     * the device supports administrative state changes, treat the request as
+     * an administrative disable instead.
+     */
+    if (check_admin_state_change_support(dev) &&
+        !qdev_hotunplug_allowed(dev, &unplug_err)) {
+        error_free(unplug_err);
+        unplug_err = NULL;
+
+        if (migration_is_running()) {
+            error_setg(errp, "device disable not allowed while migrating");
             return;
         }
 
-        qdev_unplug(dev, errp);
+        dev->admin_disable_pending = true;
+
+        /*
+         * admin links gets removed eventually when synchronous disable
+         * is called
+         */
+        qdev_disable(dev, errp);
+        if (*errp) {
+            dev->admin_disable_pending = false;
+        }
+
+        return;
     }
+
+    qdev_unplug(dev, errp);
 }
 
 int qdev_sync_config(DeviceState *dev, Error **errp)
