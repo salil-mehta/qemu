@@ -2859,6 +2859,9 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
     /* finalize the features like SVE, SME etc */
     arm_cpu_finalize_features(ARM_CPU(cpuobj), &error_fatal);
 
+    /* make disabled CPU part of unattached container for now */
+    qdev_set_id(DEVICE(cpuobj), NULL, NULL);
+
     /*
      * [!] Constraint: The ARM CPU architecture does not permit new CPUs
      * to be added after system initialization.
