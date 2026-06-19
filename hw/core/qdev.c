@@ -320,11 +320,32 @@ static int qdev_assert_realized_properly_cb(Object *obj, void *opaque)
     DeviceState *dev = DEVICE(object_dynamic_cast(obj, TYPE_DEVICE));
     DeviceClass *dc;
 
-    if (dev) {
-        dc = DEVICE_GET_CLASS(dev);
-        assert(dev->realized);
-        assert(dev->parent_bus || !dc->bus_type);
+    if (!dev) {
+        return 0;
     }
+
+    /*
+     * Administrative "disabled" describes device availability, not a single
+     * qdev realization model. How the disabled state is represented is
+     * device-specific: some devices may remain realized but functionally
+     * unavailable, while others may be pre-created in the QOM tree and
+     * realized only when administratively enabled.
+     *
+     * Relax the generic "all devices in the QOM tree are realized" assertion
+     * only for the latter case: an admin-state-capable device that is
+     * currently disabled and not yet realized. Enabled devices, and disabled
+     * devices that are already realized, must still satisfy the normal qdev
+     * realization checks.
+     */
+    if (!dev->realized && check_admin_state_change_support(dev) &&
+        !qdev_check_enabled(dev)) {
+        return 0;
+    }
+
+    dc = DEVICE_GET_CLASS(dev);
+    assert(dev->realized);
+    assert(dev->parent_bus || !dc->bus_type);
+
     return 0;
 }
 
