@@ -389,27 +389,28 @@ bool tcg_region_alloc(TCGContext *s)
 /*
  * Perform a context's first region allocation.
  * This function does _not_ increment region.agg_size_full.
+ *
+ * Return true if no region was available.  In that case, leave @s looking
+ * as if its current region has reached highwater, so the next tcg_tb_alloc()
+ * takes the normal region-overflow path.
  */
-static void tcg_region_initial_alloc__locked(TCGContext *s)
+static bool tcg_region_initial_alloc__locked(TCGContext *s)
 {
-    bool err = tcg_region_alloc__locked(s);
-
-    /*
-     * Lazily realized vCPUs (administratively "disabled" at boot and realized
-     * later on demand) may initially fail to obtain even a single code region
-     * if the shared TB cache is under pressure from already running vCPUs.
-     *
-     * Treat this first-allocation failure as non-fatal: mark this TCGContext
-     * to request a TB cache flush and return. The flush is performed later,
-     * synchronously in the vCPU execution path (cpu_exec_loop()/tb_gen_code()),
-     * which is the safe place for tb_flush().
-     */
-    if (err && s->cpu && s->cpu->lazy_realized) {
-        s->tbflush_pend = true;
-        return;
+    if (tcg_region_alloc__locked(s)) {
+        /*
+         * A vCPU thread may register after other vCPUs have filled the shared
+         * code buffer.  Do not flush here: tb_flush() must be run from the
+         * normal execution path.  Instead, force the first tcg_tb_alloc() to
+         * see highwater state.  It will try to allocate a new region and, if
+         * the buffer is still full, return NULL so tb_gen_code() flushes and
+         * retries safely.
+         */
+        qatomic_set(&s->code_gen_ptr,
+                    (void *)((char *)s->code_gen_highwater + 1));
+        return true;
     }
 
-    g_assert(!err);
+    return false;
 }
 
 void tcg_region_initial_alloc(TCGContext *s)
@@ -431,7 +432,7 @@ void tcg_region_reset_all(void)
 
     for (i = 0; i < n_ctxs; i++) {
         TCGContext *s = qatomic_read(&tcg_ctxs[i]);
-        tcg_region_initial_alloc__locked(s);
+        g_assert(!tcg_region_initial_alloc__locked(s));
     }
     qemu_mutex_unlock(&region.lock);
 
@@ -861,7 +862,7 @@ void tcg_region_init(size_t tb_size, int splitwx, unsigned max_threads)
      * This will be the context into which we generate the prologue.
      * It is also the only context for CONFIG_USER_ONLY.
      */
-    tcg_region_initial_alloc__locked(&tcg_init_ctx);
+    g_assert(!tcg_region_initial_alloc__locked(&tcg_init_ctx));
 }
 
 void tcg_region_prologue_set(TCGContext *s)

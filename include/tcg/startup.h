@@ -25,8 +25,6 @@
 #ifndef TCG_STARTUP_H
 #define TCG_STARTUP_H
 
-#include "hw/core/cpu.h"
-
 /**
  * tcg_init: Initialize the TCG runtime
  * @tb_size: translation buffer size
@@ -45,11 +43,7 @@ void tcg_init(size_t tb_size, int splitwx, unsigned max_threads);
  * accelerator's init_machine() method) must register with this
  * function before initiating translation.
  */
-#ifdef CONFIG_USER_ONLY
 void tcg_register_thread(void);
-#else
-void tcg_register_thread(CPUState *cpu);
-#endif
 
 /**
  * tcg_prologue_init(): Generate the code for the TCG prologue
