@@ -2964,15 +2964,15 @@ static void machvirt_init(MachineState *machine)
         qtest_enabled() || vms->gic_version == VIRT_GIC_VERSION_2 ||
         vms->gic_version == VIRT_GIC_VERSION_5 || !aarch64 ||
         !firmware_loaded || !virt_is_acpi_enabled(vms) || vms->secure) {
-        max_cpus = machine->smp.max_cpus = smp_cpus;
-        if (mc->has_online_capable_cpus) {
+        if (mc->has_online_capable_cpus && max_cpus > smp_cpus) {
             if (vms->gic_version == VIRT_GIC_VERSION_2) {
                 warn_report("GICv2 does not support online-capable CPUs");
             } else if (vms->gic_version == VIRT_GIC_VERSION_5) {
                 warn_report("CPU hotplug is not yet supported with GICv5");
             }
-            mc->has_online_capable_cpus = false;
         }
+        max_cpus = machine->smp.max_cpus = smp_cpus;
+        mc->has_online_capable_cpus = false;
     }
 
     if (max_cpus > virt_max_cpus) {
