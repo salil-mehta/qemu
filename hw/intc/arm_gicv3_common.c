@@ -89,7 +89,8 @@ static int gicv3_post_load(void *opaque, int version_id)
     MachineState *ms = MACHINE(qdev_get_machine());
 
     /* ensure source and destination VM 'maxcpu' count matches */
-    if (s->num_cpu != ms->smp.max_cpus) {
+    if (MACHINE_GET_CLASS(ms)->has_online_capable_cpus &&
+        s->num_cpu != ms->smp.max_cpus) {
         error_report("GICv3: source num_cpu(%u) != dest maxcpus(%u). "
                      "Launch dest with -smp maxcpus=%u",
                      s->num_cpu, ms->smp.max_cpus, s->num_cpu);
@@ -143,8 +144,9 @@ static int vmstate_gicv3_cpu_post_load(void *opaque, int version_id)
     bool src_enabled, dst_enabled;
     GICv3CPUState *gcs = opaque;
     CPUState *cs = gcs->cpu;
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
 
-    if (!cs) {
+    if (!mc->has_online_capable_cpus || !cs) {
         return 0;
     }
 
