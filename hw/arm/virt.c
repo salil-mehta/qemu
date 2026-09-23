@@ -2896,25 +2896,24 @@ static void machvirt_init(MachineState *machine)
      * In accelerated mode, the memory map is computed earlier in kvm_type()
      * for Linux, or hvf_get_physical_address_range() for macOS to create a
      * VM with the right number of IPA bits.
+     *
+     * Probe the guest execution state even if the memory map is already set:
+     * the aarch64 property is needed to decide whether online-capable CPUs
+     * are supported before fixing the possible CPU count. Only memory-map
+     * initialization remains conditional on !vms->memmap.
+     *
+     * All possible CPUs use machine->cpu_type, so this probe also determines
+     * the execution state used by the later ACPI and PCIe setup.
      */
-    if (!vms->memmap) {
-        Object *cpuobj;
-        ARMCPU *armcpu;
-        int pa_bits;
+    {
+        Object *cpuobj = object_new(machine->cpu_type);
 
-        /*
-         * Instantiate a temporary CPU object to find out about what
-         * we are about to deal with. Once this is done, get rid of
-         * the object.
-         */
-        cpuobj = object_new(machine->cpu_type);
-        armcpu = ARM_CPU(cpuobj);
+        if (!vms->memmap) {
+            virt_set_memmap(vms, arm_pamax(ARM_CPU(cpuobj)));
+        }
 
-        pa_bits = arm_pamax(armcpu);
-
+        aarch64 = object_property_get_bool(cpuobj, "aarch64", NULL);
         object_unref(cpuobj);
-
-        virt_set_memmap(vms, pa_bits);
     }
 
     /* We can probe only here because during property set
@@ -2922,6 +2921,23 @@ static void machvirt_init(MachineState *machine)
      */
     finalize_gic_version(vms);
     finalize_msi_controller(vms);
+
+    if (vms->secure) {
+        /*
+         * The Secure view of the world is the same as the NonSecure,
+         * but with a few extra devices. Create it as a container region
+         * containing the system memory at low priority; any secure-only
+         * devices go in at higher priority and take precedence.
+         */
+        secure_sysmem = g_new(MemoryRegion, 1);
+        vms->secure_sysmem = secure_sysmem;
+        memory_region_init(secure_sysmem, OBJECT(machine), "secure-memory",
+                           UINT64_MAX);
+        memory_region_add_subregion_overlap(secure_sysmem, 0, sysmem, -1);
+    }
+
+    firmware_loaded = virt_firmware_init(vms, sysmem,
+                                         secure_sysmem ?: sysmem);
 
     /*
      * The maximum number of CPUs depends on the GIC version, or on how
@@ -2940,9 +2956,14 @@ static void machvirt_init(MachineState *machine)
         }
     }
 
+    /*
+     * Administrative CPU changes need the ACPI GED and QEMU's PSCI policy
+     * checks. Firmware at EL3 owns PSCI itself, so cannot use this model.
+     */
     if ((tcg_enabled() && !qemu_tcg_mttcg_enabled()) || hvf_enabled() ||
         qtest_enabled() || vms->gic_version == VIRT_GIC_VERSION_2 ||
-        vms->gic_version == VIRT_GIC_VERSION_5) {
+        vms->gic_version == VIRT_GIC_VERSION_5 || !aarch64 ||
+        !firmware_loaded || !virt_is_acpi_enabled(vms) || vms->secure) {
         max_cpus = machine->smp.max_cpus = smp_cpus;
         if (mc->has_online_capable_cpus) {
             if (vms->gic_version == VIRT_GIC_VERSION_2) {
@@ -2973,23 +2994,6 @@ static void machvirt_init(MachineState *machine)
 
     /* uses smp.max_cpus to initialize all possible vCPUs */
     possible_cpus = mc->possible_cpu_arch_ids(machine);
-
-    if (vms->secure) {
-        /*
-         * The Secure view of the world is the same as the NonSecure,
-         * but with a few extra devices. Create it as a container region
-         * containing the system memory at low priority; any secure-only
-         * devices go in at higher priority and take precedence.
-         */
-        secure_sysmem = g_new(MemoryRegion, 1);
-        vms->secure_sysmem = secure_sysmem;
-        memory_region_init(secure_sysmem, OBJECT(machine), "secure-memory",
-                           UINT64_MAX);
-        memory_region_add_subregion_overlap(secure_sysmem, 0, sysmem, -1);
-    }
-
-    firmware_loaded = virt_firmware_init(vms, sysmem,
-                                         secure_sysmem ?: sysmem);
 
     /* If we have an EL3 boot ROM then the assumption is that it will
      * implement PSCI itself, so disable QEMU's internal implementation
@@ -3064,7 +3068,6 @@ static void machvirt_init(MachineState *machine)
         numa_cpu_pre_plug(&possible_cpus->cpus[cs->cpu_index], DEVICE(cpuobj),
                           &error_fatal);
 
-        aarch64 &= object_property_get_bool(cpuobj, "aarch64", NULL);
 
         if (!vms->secure) {
             object_property_set_bool(cpuobj, "has_el3", false, NULL);
