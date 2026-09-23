@@ -2881,7 +2881,7 @@ virt_setup_lazy_vcpu_realization(Object *cpuobj, VirtMachineState *vms)
     /*
      * Present & administratively disabled vCPUs:
      *
-     * These CPUs are marked offline at init via '-smp disabledcpus=N'. We
+     * CPUs beyond '-smp cpus=N' and below 'maxcpus=M' start disabled. We
      * intentionally do not realize them during the first boot, since it is
      * not known if or when they will ever be enabled. The decision to enable
      * such CPUs depends on policy (e.g. guided by SLAs or other deployment
