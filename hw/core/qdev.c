@@ -882,7 +882,11 @@ device_set_admin_power_state(Object *obj, int new_state, Error **errp)
         return;
     }
 
-    g_assert(powerstate_handler(dev));
+    if (!powerstate_handler(dev)) {
+        error_setg(errp, "Device '%s' has no power-state handler",
+                   object_get_typename(obj));
+        return;
+    }
     old_state = qatomic_read(&dev->admin_power_state);
 
     switch (new_state) {
