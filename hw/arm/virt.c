@@ -2928,9 +2928,12 @@ static void machvirt_init(MachineState *machine)
      * many redistributors we can fit into the memory map (which in turn
      * depends on whether this is a GICv3 or v4).
      */
-     if (vms->gic_version == VIRT_GIC_VERSION_2) {
+    if (vms->gic_version == VIRT_GIC_VERSION_2) {
         virt_max_cpus = GIC_NCPU;
-     } else {
+    } else if (vms->gic_version == VIRT_GIC_VERSION_5) {
+        /* GICv5 CPU capacity is independent of GICv3/v4 redistributors. */
+        virt_max_cpus = 1 << QEMU_GICV5_IAFFID_BITS;
+    } else {
         virt_max_cpus = virt_redist_capacity(vms, VIRT_GIC_REDIST);
         if (vms->highmem_redists) {
             virt_max_cpus += virt_redist_capacity(vms, VIRT_HIGH_GIC_REDIST2);
