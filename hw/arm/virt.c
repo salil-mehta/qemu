@@ -2531,9 +2531,9 @@ virt_cpu_pre_poweron(PowerStateHandler *handler, DeviceState *dev, Error **errp)
      * Device Check (Notify(..., 0x80)) via GED. This prompts OSPM to
      * re-evaluate ACPI _STA method.
      *
-     * Only notify after the VM is ready i.e., the guest kernel is initialized.
-     * For example, during boot-time '-deviceset' usage, the kernel isn't ready,
-     * so sending a notification is pointless.
+     * Suppress notifications during machine initialization and incoming
+     * migration. CPUs enabled with '-device' are described at boot; the
+     * incoming guest restores its existing state from the migration stream.
      */
     if (phase_check(PHASE_MACHINE_READY) &&
         !runstate_check(RUN_STATE_INMIGRATE)) {
@@ -2570,11 +2570,9 @@ virt_cpu_request_poweroff(PowerStateHandler *handler, DeviceState *dev,
     }
 
     /*
-     * Check that we are not tearing down too early when no live state exists.
-     * This can happen in:
-     *  1. Lazy device realization
-     *  2. Use of '-device-set' at qemu prompt
-     *  3. Post-migration on the destination VM
+     * An administratively disabled CPU may not have been realized yet.
+     * There is no runtime state to park or guest notification to send until
+     * its first enable operation has realized the CPU.
      */
     if (!dev->realized) {
         return;
